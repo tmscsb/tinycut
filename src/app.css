@@ -1,0 +1,71 @@
+@import "tailwindcss";
+@plugin "../node_modules/daisyui/index.js" {
+  themes: light --default, dark --prefersdark;
+}
+
+html, body, #app {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+/* Workspace dot-pattern background — adapts to DaisyUI theme */
+.workspace-bg {
+  background-color: var(--color-base-300);
+  background-image: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--color-base-content) 12%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: 20px 20px;
+}
+
+/* Prevent text selection while dragging/panning */
+.dragging, .panning {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Smooth transitions for interactive elements */
+button, input, select, label {
+  transition: all 0.15s ease-in-out;
+}
+
+/* Prevent image ghost when dragging */
+img {
+  -webkit-user-drag: none;
+  user-drag: none;
+}
+
+@media print {
+  @page {
+    margin: 0;
+    size: auto;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  .print-page-container,
+  .print-page-container * {
+    visibility: visible;
+  }
+
+  .print-page-container {
+    position: absolute;
+    left: 0;
+    top: 0;
+    overflow: visible !important;
+  }
+
+  .print-page {
+    box-shadow: none !important;
+    margin: 0 !important;
+    border: none !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+}
