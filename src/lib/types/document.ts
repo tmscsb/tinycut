@@ -30,6 +30,27 @@ export type ImageItem = {
   crop: ImageCrop;
 };
 
+export type ShapeType = "rect" | "ellipse" | "line";
+
+export type ShapeItem = {
+  id: string;
+  type: "shape";
+  shapeType: ShapeType;
+  name: string;
+  xMm: number;
+  yMm: number;
+  widthMm: number;
+  heightMm: number;
+  rotationDeg: number;
+  lockedAspectRatio: boolean;
+  fill: string;
+  stroke: string;
+  strokeWidthMm: number;
+  cornerRadiusMm: number;
+};
+
+export type DocumentItem = ImageItem | ShapeItem;
+
 export type Page = {
   templateId: string;
   name: string;
@@ -39,7 +60,7 @@ export type Page = {
 
 export type DocumentState = {
   page: Page;
-  items: ImageItem[];
+  items: DocumentItem[];
   selectedItemId: string | null;
   zoom: number;
   unit: Unit;
@@ -58,6 +79,6 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
 
 export const ZOOM_LEVELS = [0.25, 0.5, 0.75, 1, 1.5, 2];
 
-export const LOCAL_STORAGE_KEY = "printcut-studio-document";
+export const LOCAL_STORAGE_KEY = "trimkit-document";
 
 export const MIN_SIZE_MM = 5;

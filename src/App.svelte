@@ -3,6 +3,7 @@
   import Workspace from "./lib/components/Workspace.svelte";
   import PropertiesPanel from "./lib/components/PropertiesPanel.svelte";
   import ShortcutsModal from "./lib/components/ShortcutsModal.svelte";
+  import ContextMenu from "./lib/components/ContextMenu.svelte";
   import {
     doc,
     loadFromLocalStorage,
@@ -13,11 +14,17 @@
     selectItem,
     nudgeItem,
     setZoom,
+    undo,
+    redo,
+    bringToFront,
+    sendToBack,
+    getItem,
   } from "./lib/stores/documentStore.svelte.ts";
   import {
     ui,
     initTheme,
     showShortcuts,
+    hideContextMenu,
     executePendingAction,
     cancelPendingAction,
   } from "./lib/stores/uiStore.svelte.ts";
@@ -41,6 +48,22 @@
       if (isInputFocused()) return;
 
       const mod = e.ctrlKey || e.metaKey;
+
+      if (mod && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        if (e.shiftKey) {
+          redo();
+        } else {
+          undo();
+        }
+        return;
+      }
+
+      if (mod && e.key.toLowerCase() === "y") {
+        e.preventDefault();
+        redo();
+        return;
+      }
 
       if (e.key === "Delete" || e.key === "Backspace") {
         e.preventDefault();
@@ -84,6 +107,18 @@
       if (mod && e.key === "0") {
         e.preventDefault();
         setZoom(1);
+        return;
+      }
+
+      if (mod && e.key === "]") {
+        e.preventDefault();
+        if (doc.selectedItemId) bringToFront(doc.selectedItemId);
+        return;
+      }
+
+      if (mod && e.key === "[") {
+        e.preventDefault();
+        if (doc.selectedItemId) sendToBack(doc.selectedItemId);
         return;
       }
 
@@ -136,6 +171,18 @@
 </div>
 
 <ShortcutsModal />
+
+{#if ui.contextMenu}
+  {@const ctxItem = getItem(ui.contextMenu.itemId)}
+  {#if ctxItem}
+    <ContextMenu
+      item={ctxItem}
+      x={ui.contextMenu.x}
+      y={ui.contextMenu.y}
+      onclose={hideContextMenu}
+    />
+  {/if}
+{/if}
 
 {#if ui.showUnsavedWarning}
   <div class="modal modal-open">

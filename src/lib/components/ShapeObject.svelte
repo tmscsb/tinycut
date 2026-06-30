@@ -1,40 +1,18 @@
 <script lang="ts">
-  import type { ImageItem } from "../types/document.ts";
+  import type { ShapeItem } from "../types/document.ts";
   import { doc, selectItem, resizeItem, beginUndo } from "../stores/documentStore.svelte.ts";
   import { mmToPx, pxToMm } from "../utils/units.ts";
   import { MIN_SIZE_MM } from "../types/document.ts";
   import ResizeHandles from "./ResizeHandles.svelte";
-  import CropHandles from "./CropHandles.svelte";
 
-  let { item }: { item: ImageItem } = $props();
+  let { item }: { item: ShapeItem } = $props();
 
   const selected = $derived(doc.selectedItemId === item.id);
-  const cropMode = $derived(doc.cropModeItemId === item.id);
 
-  const cropFracW = $derived(item.crop.right - item.crop.left);
-  const cropFracH = $derived(item.crop.bottom - item.crop.top);
-  const hasCrop = $derived(item.crop.left !== 0 || item.crop.top !== 0 || item.crop.right !== 1 || item.crop.bottom !== 1);
-
-  const rawPxX = $derived(mmToPx(item.xMm, doc.zoom));
-  const rawPxY = $derived(mmToPx(item.yMm, doc.zoom));
-  const rawPxW = $derived(mmToPx(item.widthMm, doc.zoom));
-  const rawPxH = $derived(mmToPx(item.heightMm, doc.zoom));
-
-  const displayX = $derived((hasCrop && !cropMode) ? rawPxX + item.crop.left * rawPxW : rawPxX);
-  const displayY = $derived((hasCrop && !cropMode) ? rawPxY + item.crop.top * rawPxH : rawPxY);
-  const displayW = $derived((hasCrop && !cropMode) ? cropFracW * rawPxW : rawPxW);
-  const displayH = $derived((hasCrop && !cropMode) ? cropFracH * rawPxH : rawPxH);
-
-  const cropViewX = $derived(item.crop.left * item.naturalWidthPx);
-  const cropViewY = $derived(item.crop.top * item.naturalHeightPx);
-  const cropViewW = $derived(cropFracW * item.naturalWidthPx);
-  const cropViewH = $derived(cropFracH * item.naturalHeightPx);
-
-  const effectiveViewBox = $derived(
-    cropMode
-      ? `0 0 ${item.naturalWidthPx} ${item.naturalHeightPx}`
-      : (hasCrop ? `${cropViewX} ${cropViewY} ${cropViewW} ${cropViewH}` : `0 0 ${item.naturalWidthPx} ${item.naturalHeightPx}`),
-  );
+  const pxX = $derived(mmToPx(item.xMm, doc.zoom));
+  const pxY = $derived(mmToPx(item.yMm, doc.zoom));
+  const pxW = $derived(mmToPx(item.widthMm, doc.zoom));
+  const pxH = $derived(mmToPx(item.heightMm, doc.zoom));
 
   let resizing = $state(false);
   let resizeHandle = $state("");
@@ -71,10 +49,7 @@
     if (handle.includes("n")) newH = sh - dy;
 
     if (item.lockedAspectRatio) {
-      const visibleW = (item.crop.right - item.crop.left) * item.naturalWidthPx;
-      const visibleH = (item.crop.bottom - item.crop.top) * item.naturalHeightPx;
-      const aspect = visibleH > 0 ? visibleW / visibleH : 1;
-
+      const aspect = sw / sh || 1;
       const isHorizontal = handle === "e" || handle === "w";
       const isVertical = handle === "n" || handle === "s";
 
@@ -118,46 +93,62 @@
 
 <div
   data-image-item={item.id}
-  style="position: absolute; left: {displayX}px; top: {displayY}px; width: {displayW}px; height: {displayH}px; z-index: {selected ? 10 : 1};"
+  style="position: absolute; left: {pxX}px; top: {pxY}px; width: {pxW}px; height: {pxH}px; z-index: {selected ? 10 : 1};"
   class="cursor-move select-none"
-  role="img"
+  role="figure"
   aria-label={item.name}
 >
-  <div
-    class="absolute inset-0 overflow-hidden"
-    class:ring-2={selected && !cropMode}
-    class:ring-primary={selected && !cropMode}
-    class:ring-offset-1={selected && !cropMode}
+  <svg
+    width="100%"
+    height="100%"
+    viewBox="0 0 {item.widthMm} {item.heightMm}"
+    class="block pointer-events-none"
+    class:ring-2={selected}
+    class:ring-primary={selected}
+    class:ring-offset-1={selected}
   >
-    <svg
-      width="100%"
-      height="100%"
-      viewBox={effectiveViewBox}
-      preserveAspectRatio="none"
-      class="block pointer-events-none"
-    >
-      <image
-        href={item.src}
-        x="0"
-        y="0"
-        width={item.naturalWidthPx}
-        height={item.naturalHeightPx}
+    {#if item.shapeType === "rect"}
+      <rect
+        x={item.strokeWidthMm / 2}
+        y={item.strokeWidthMm / 2}
+        width={item.widthMm - item.strokeWidthMm}
+        height={item.heightMm - item.strokeWidthMm}
+        rx={item.cornerRadiusMm}
+        fill={item.fill}
+        stroke={item.stroke}
+        stroke-width={item.strokeWidthMm}
       />
-    </svg>
-  </div>
+    {:else if item.shapeType === "ellipse"}
+      <ellipse
+        cx={item.widthMm / 2}
+        cy={item.heightMm / 2}
+        rx={item.widthMm / 2 - item.strokeWidthMm / 2}
+        ry={item.heightMm / 2 - item.strokeWidthMm / 2}
+        fill={item.fill}
+        stroke={item.stroke}
+        stroke-width={item.strokeWidthMm}
+      />
+    {:else if item.shapeType === "line"}
+      <line
+        x1={item.strokeWidthMm / 2}
+        y1={item.strokeWidthMm / 2}
+        x2={item.widthMm - item.strokeWidthMm / 2}
+        y2={item.heightMm - item.strokeWidthMm / 2}
+        stroke={item.stroke}
+        stroke-width={item.strokeWidthMm}
+        stroke-linecap="round"
+      />
+    {/if}
+  </svg>
 
-  {#if selected && !cropMode}
+  {#if selected}
     <ResizeHandles
-      pxW={displayW}
-      pxH={displayH}
+      {pxW}
+      {pxH}
       onResizeStart={handleResizeStart}
       onResizeMove={handleResizeMove}
       onResizeEnd={handleResizeEnd}
       {resizing}
     />
-  {/if}
-
-  {#if cropMode}
-    <CropHandles {item} pxW={rawPxW} pxH={rawPxH} />
   {/if}
 </div>

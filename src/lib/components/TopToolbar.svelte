@@ -3,12 +3,16 @@
     doc,
     requestNewDocument,
     addImage,
+    addShape,
     saveToLocalStorage,
     loadFromLocalStorage,
     setZoom,
     setUnit,
     exportJson,
     importJson,
+    undo,
+    redo,
+    undoState,
   } from "../stores/documentStore.svelte.ts";
   import { ZOOM_LEVELS, PAGE_TEMPLATES } from "../types/document.ts";
   import { exportDocumentAsSvg } from "../utils/exportSvg.ts";
@@ -46,7 +50,7 @@
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "printcut-export.svg";
+    a.download = "trimkit-export.svg";
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -57,7 +61,7 @@
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "printcut-project.json";
+    a.download = "trimkit-project.json";
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -68,6 +72,38 @@
 </script>
 
 <div class="no-print navbar gap-2 px-4 py-2 bg-base-100 border-b border-base-300 shadow-sm flex-wrap h-auto min-h-0">
+  <!-- Brand -->
+  <div class="flex items-center gap-1.5">
+    <img src="/trimkit-icon.svg" alt="TrimKit" width="20" height="20" class="rounded" />
+    <span class="text-sm font-semibold text-base-content/80 hidden sm:inline">TrimKit</span>
+  </div>
+
+  <div class="divider divider-horizontal mx-1 hidden sm:flex"></div>
+
+  <!-- Undo / Redo -->
+  <div class="join">
+    <button
+      class="join-item btn btn-sm btn-ghost"
+      onclick={undo}
+      disabled={!undoState.hasUndo}
+      title="Undo"
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+      <kbd class="kbd kbd-xs ml-0.5">{modKey}Z</kbd>
+    </button>
+    <button
+      class="join-item btn btn-sm btn-ghost"
+      onclick={redo}
+      disabled={!undoState.hasRedo}
+      title="Redo"
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      <kbd class="kbd kbd-xs ml-0.5">{modKey}Y</kbd>
+    </button>
+  </div>
+
+  <div class="divider divider-horizontal mx-1"></div>
+
   <!-- Document Actions -->
   <div class="flex items-center gap-2">
     <button
@@ -93,14 +129,37 @@
 
   <div class="divider divider-horizontal mx-1"></div>
 
-  <!-- Add Image -->
-  <button
-    class="btn btn-sm btn-primary"
-    onclick={() => fileInput?.click()}
-    title="Import image"
-  >
-    + Image
-  </button>
+  <!-- Add Image / Shapes -->
+  <div class="join">
+    <button
+      class="join-item btn btn-sm btn-primary"
+      onclick={() => fileInput?.click()}
+      title="Import image"
+    >
+      + Image
+    </button>
+    <button
+      class="join-item btn btn-sm btn-outline"
+      onclick={() => addShape("rect")}
+      title="Add rectangle"
+    >
+      □
+    </button>
+    <button
+      class="join-item btn btn-sm btn-outline"
+      onclick={() => addShape("ellipse")}
+      title="Add ellipse"
+    >
+      ○
+    </button>
+    <button
+      class="join-item btn btn-sm btn-outline"
+      onclick={() => addShape("line")}
+      title="Add line"
+    >
+      ╱
+    </button>
+  </div>
   <input
     type="file"
     accept="image/png,image/jpeg,image/webp,image/svg+xml"

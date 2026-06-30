@@ -5,6 +5,7 @@ export const ui = $state({
   showUnsavedWarning: false,
   pendingAction: null as (() => void) | null,
   theme: "light" as Theme,
+  contextMenu: null as { x: number; y: number; itemId: string } | null,
 });
 
 export function toggleTheme(): void {
@@ -15,7 +16,7 @@ export function toggleTheme(): void {
 export function applyTheme(theme: Theme): void {
   document.documentElement.setAttribute("data-theme", theme);
   try {
-    localStorage.setItem("printcut-theme", theme);
+    localStorage.setItem("trimkit-theme", theme);
   } catch {
     // localStorage unavailable
   }
@@ -24,7 +25,7 @@ export function applyTheme(theme: Theme): void {
 export function initTheme(): void {
   let saved: Theme | null = null;
   try {
-    saved = localStorage.getItem("printcut-theme") as Theme | null;
+    saved = localStorage.getItem("trimkit-theme") as Theme | null;
   } catch {
     // localStorage unavailable
   }
@@ -39,6 +40,14 @@ export function showShortcuts(): void {
 
 export function hideShortcuts(): void {
   ui.showShortcuts = false;
+}
+
+export function showContextMenu(x: number, y: number, itemId: string): void {
+  ui.contextMenu = { x, y, itemId };
+}
+
+export function hideContextMenu(): void {
+  ui.contextMenu = null;
 }
 
 export function confirmAction(action: () => void): void {

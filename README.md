@@ -1,6 +1,6 @@
-# PrintCut Studio
+# TrimKit
 
-A simple browser-based layout tool for placing images on printable pages at exact physical dimensions (mm/cm). Think of it as a minimal cross between a canvas layout tool and a print-prep utility.
+A browser-based layout tool for placing images on printable pages at exact physical dimensions (mm/cm). Think of it as a digital trim-and-arrange board — place, resize, crop, and position images for print.
 
 ## Features
 

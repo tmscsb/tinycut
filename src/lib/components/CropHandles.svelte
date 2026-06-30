@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { ImageItem, ImageCrop } from "../types/document.ts";
-  import { updateItem } from "../stores/documentStore.svelte.ts";
+  import { updateItem, beginUndo } from "../stores/documentStore.svelte.ts";
 
   let { item, pxW, pxH }: {
     item: ImageItem;
@@ -16,6 +16,7 @@
   function startDrag(e: PointerEvent, handle: string) {
     e.stopPropagation();
     e.preventDefault();
+    beginUndo();
     dragging = true;
     handleId = handle;
     dragStartPx = { x: e.clientX, y: e.clientY };

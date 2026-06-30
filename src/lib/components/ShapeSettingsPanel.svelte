@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ImageItem } from "../types/document.ts";
+  import type { ShapeItem } from "../types/document.ts";
   import {
     doc,
     setItemWidth,
@@ -7,15 +7,16 @@
     setItemX,
     setItemY,
     setLockedAspect,
+    setShapeFill,
+    setShapeStroke,
+    setShapeStrokeWidth,
+    setShapeCornerRadius,
     deleteSelectedItem,
     duplicateSelectedItem,
-    enterCropMode,
-    resetCrop,
   } from "../stores/documentStore.svelte.ts";
   import { displayValue, parseInputToMm } from "../utils/units.ts";
-  import CropPanel from "./CropPanel.svelte";
 
-  let { item }: { item: ImageItem } = $props();
+  let { item }: { item: ShapeItem } = $props();
 
   let dispX = $state("");
   let dispY = $state("");
@@ -48,10 +49,9 @@
 </script>
 
 <div class="space-y-5">
-  <!-- Header -->
   <div class="pb-3 border-b border-base-300">
     <h3 class="font-semibold text-base-content text-sm truncate" title={item.name}>{item.name}</h3>
-    <p class="text-xs text-base-content/50 mt-0.5">Image properties</p>
+    <p class="text-xs text-base-content/50 mt-0.5 capitalize">{item.shapeType}</p>
   </div>
 
   <!-- Position -->
@@ -59,9 +59,9 @@
     <h4 class="text-xs font-medium text-base-content/50 uppercase tracking-wide mb-2">Position</h4>
     <div class="grid grid-cols-2 gap-2">
       <div>
-        <label class="block text-xs text-base-content/60 mb-1" for={`img-x-${item.id}`}>X ({doc.unit})</label>
+        <label class="block text-xs text-base-content/60 mb-1" for={`shp-x-${item.id}`}>X ({doc.unit})</label>
         <input
-          id={`img-x-${item.id}`}
+          id={`shp-x-${item.id}`}
           type="number"
           class="input input-bordered input-sm w-full"
           step={doc.unit === "cm" ? "0.1" : "1"}
@@ -70,9 +70,9 @@
         />
       </div>
       <div>
-        <label class="block text-xs text-base-content/60 mb-1" for={`img-y-${item.id}`}>Y ({doc.unit})</label>
+        <label class="block text-xs text-base-content/60 mb-1" for={`shp-y-${item.id}`}>Y ({doc.unit})</label>
         <input
-          id={`img-y-${item.id}`}
+          id={`shp-y-${item.id}`}
           type="number"
           class="input input-bordered input-sm w-full"
           step={doc.unit === "cm" ? "0.1" : "1"}
@@ -88,9 +88,9 @@
     <h4 class="text-xs font-medium text-base-content/50 uppercase tracking-wide mb-2">Size</h4>
     <div class="grid grid-cols-2 gap-2 mb-2">
       <div>
-        <label class="block text-xs text-base-content/60 mb-1" for={`img-w-${item.id}`}>Width ({doc.unit})</label>
+        <label class="block text-xs text-base-content/60 mb-1" for={`shp-w-${item.id}`}>Width ({doc.unit})</label>
         <input
-          id={`img-w-${item.id}`}
+          id={`shp-w-${item.id}`}
           type="number"
           class="input input-bordered input-sm w-full"
           min={doc.unit === "cm" ? "0.1" : "1"}
@@ -100,9 +100,9 @@
         />
       </div>
       <div>
-        <label class="block text-xs text-base-content/60 mb-1" for={`img-h-${item.id}`}>Height ({doc.unit})</label>
+        <label class="block text-xs text-base-content/60 mb-1" for={`shp-h-${item.id}`}>Height ({doc.unit})</label>
         <input
-          id={`img-h-${item.id}`}
+          id={`shp-h-${item.id}`}
           type="number"
           class="input input-bordered input-sm w-full"
           min={doc.unit === "cm" ? "0.1" : "1"}
@@ -123,57 +123,64 @@
     </label>
   </div>
 
-  <!-- Crop -->
-  <div class="pt-3 border-t border-base-300">
-    <h4 class="text-xs font-medium text-base-content/50 uppercase tracking-wide mb-2">Crop</h4>
-    <div class="space-y-2">
-      {#if doc.cropModeItemId === item.id}
-        <button
-          class="btn btn-sm btn-warning w-full"
-          onclick={() => enterCropMode(null)}
-        >
-          Exit Crop Mode
-        </button>
-      {:else}
-        <button
-          class="btn btn-sm btn-outline w-full"
-          onclick={() => enterCropMode(item.id)}
-        >
-          Crop Image
-        </button>
-      {/if}
-
-      <button
-        class="btn btn-sm btn-ghost w-full"
-        onclick={() => resetCrop(item.id)}
-      >
-        Reset Crop
-      </button>
+  <!-- Appearance -->
+  {#if item.shapeType !== "line"}
+    <div>
+      <h4 class="text-xs font-medium text-base-content/50 uppercase tracking-wide mb-2">Fill</h4>
+      <input
+        type="color"
+        class="w-10 h-8 rounded cursor-pointer"
+        value={item.fill}
+        onchange={(e) => setShapeFill(item.id, (e.target as HTMLInputElement).value)}
+        title="Fill color"
+      />
     </div>
+  {/if}
 
-    {#if doc.cropModeItemId === item.id}
-      <div class="mt-3">
-        <CropPanel {item} />
+  <div>
+    <h4 class="text-xs font-medium text-base-content/50 uppercase tracking-wide mb-2">Stroke</h4>
+    <div class="flex items-center gap-2">
+      <input
+        type="color"
+        class="w-10 h-8 rounded cursor-pointer"
+        value={item.stroke}
+        onchange={(e) => setShapeStroke(item.id, (e.target as HTMLInputElement).value)}
+        title="Stroke color"
+      />
+      <div class="flex-1">
+        <label class="block text-xs text-base-content/60 mb-1" for={`shp-sw-${item.id}`}>Width ({doc.unit})</label>
+        <input
+          id={`shp-sw-${item.id}`}
+          type="number"
+          class="input input-bordered input-sm w-full"
+          min="0" step="0.1"
+          value={displayValue(item.strokeWidthMm, doc.unit)}
+          onchange={(e) => setShapeStrokeWidth(item.id, parseInputToMm(parseFloat((e.target as HTMLInputElement).value) || 0, doc.unit))}
+        />
       </div>
-    {/if}
+    </div>
   </div>
+
+  {#if item.shapeType === "rect"}
+    <div>
+      <h4 class="text-xs font-medium text-base-content/50 uppercase tracking-wide mb-2">Corner Radius</h4>
+      <input
+        id={`shp-cr-${item.id}`}
+        type="number"
+        class="input input-bordered input-sm w-full"
+        min="0" step="0.5"
+        value={displayValue(item.cornerRadiusMm, doc.unit)}
+        onchange={(e) => setShapeCornerRadius(item.id, parseInputToMm(parseFloat((e.target as HTMLInputElement).value) || 0, doc.unit))}
+      />
+    </div>
+  {/if}
 
   <!-- Actions -->
   <div class="pt-3 border-t border-base-300">
     <h4 class="text-xs font-medium text-base-content/50 uppercase tracking-wide mb-2">Actions</h4>
     <div class="grid grid-cols-2 gap-2">
-      <button
-        class="btn btn-sm btn-outline"
-        onclick={duplicateSelectedItem}
-      >
-        Duplicate
-      </button>
-      <button
-        class="btn btn-sm btn-error btn-outline"
-        onclick={deleteSelectedItem}
-      >
-        Delete
-      </button>
+      <button class="btn btn-sm btn-outline" onclick={duplicateSelectedItem}>Duplicate</button>
+      <button class="btn btn-sm btn-error btn-outline" onclick={deleteSelectedItem}>Delete</button>
     </div>
   </div>
 </div>

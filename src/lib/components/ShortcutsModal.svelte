@@ -5,9 +5,14 @@
     {
       category: "General",
       items: [
-        { keys: ["Del", "Backspace"], label: "Delete selected image" },
-        { keys: ["Ctrl", "D"], label: "Duplicate selected image" },
+        { keys: ["Ctrl", "Z"], label: "Undo" },
+        { keys: ["Ctrl", "Shift", "Z"], label: "Redo" },
+        { keys: ["Ctrl", "Y"], label: "Redo (alternate)" },
+        { keys: ["Del", "Backspace"], label: "Delete selected item" },
+        { keys: ["Ctrl", "D"], label: "Duplicate selected item" },
         { keys: ["Ctrl", "S"], label: "Save to browser storage" },
+        { keys: ["Ctrl", "]"], label: "Bring to front" },
+        { keys: ["Ctrl", "["], label: "Send to back" },
         { keys: ["Esc"], label: "Deselect / exit crop mode" },
         { keys: ["?"], label: "Show this shortcuts dialog" },
       ],
@@ -51,8 +56,9 @@
               {#each group.items as item}
                 <div class="flex items-center justify-between py-1">
                   <span class="text-sm text-base-content/80">{item.label}</span>
-                  <div class="flex items-center gap-1">
-                    {#each item.keys as key}
+                  <div class="flex items-center gap-0.5 text-base-content/50">
+                    {#each item.keys as key, i}
+                      {#if i > 0}<span class="text-xs font-bold">+</span>{/if}
                       {#if key === "Ctrl"}
                         <kbd class="kbd kbd-sm">{isMac ? "⌘" : "Ctrl"}</kbd>
                       {:else if key === "Shift"}

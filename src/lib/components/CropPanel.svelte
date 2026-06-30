@@ -1,19 +1,25 @@
 <script lang="ts">
   import type { ImageItem, ImageCrop } from "../types/document.ts";
-  import { updateItem } from "../stores/documentStore.svelte.ts";
+  import { setCrop, exitCropMode } from "../stores/documentStore.svelte.ts";
 
   let { item }: { item: ImageItem } = $props();
 
-  let cropLeft = $state("0");
-  let cropTop = $state("0");
-  let cropRight = $state("100");
-  let cropBottom = $state("100");
+  let cropLeft = $state("");
+  let cropTop = $state("");
+  let cropRight = $state("");
+  let cropBottom = $state("");
+
+  let lastAppliedCrop = $state<ImageCrop | null>(null);
 
   $effect(() => {
-    cropLeft = String((item.crop.left * 100).toFixed(1));
-    cropTop = String((item.crop.top * 100).toFixed(1));
-    cropRight = String((item.crop.right * 100).toFixed(1));
-    cropBottom = String((item.crop.bottom * 100).toFixed(1));
+    const c = item.crop;
+    if (!lastAppliedCrop || lastAppliedCrop.left !== c.left || lastAppliedCrop.top !== c.top || lastAppliedCrop.right !== c.right || lastAppliedCrop.bottom !== c.bottom) {
+      cropLeft = String((c.left * 100).toFixed(1));
+      cropTop = String((c.top * 100).toFixed(1));
+      cropRight = String((c.right * 100).toFixed(1));
+      cropBottom = String((c.bottom * 100).toFixed(1));
+      lastAppliedCrop = { ...c };
+    }
   });
 
   function applyCrop() {
@@ -30,7 +36,9 @@
     if (bottom - top < 0.01) bottom = Math.min(1, top + 0.01);
 
     const crop: ImageCrop = { left, top, right, bottom };
-    updateItem(item.id, { crop });
+    lastAppliedCrop = { ...crop };
+    setCrop(item.id, crop);
+    exitCropMode();
   }
 </script>
 

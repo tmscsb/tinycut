@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { doc, selectItem, moveItem, addImage } from "../stores/documentStore.svelte.ts";
+  import { doc, selectItem, moveItem, addImage, beginUndo } from "../stores/documentStore.svelte.ts";
+  import { showContextMenu } from "../stores/uiStore.svelte.ts";
   import { pxToMm } from "../utils/units.ts";
   import PageCanvas from "./PageCanvas.svelte";
 
@@ -42,6 +43,7 @@
         dragItemId = itemId;
         const item = doc.items.find((i) => i.id === itemId);
         if (item) {
+          beginUndo();
           dragStartMm = { x: item.xMm, y: item.yMm };
           dragStartPx = { x: e.clientX, y: e.clientY };
         }
@@ -110,6 +112,19 @@
     }
   }
 
+  function handleContextMenu(e: MouseEvent) {
+    const target = e.target as HTMLElement;
+    const itemEl = target.closest("[data-image-item]") as HTMLElement | null;
+    if (itemEl) {
+      const itemId = itemEl.dataset.imageItem;
+      if (itemId) {
+        e.preventDefault();
+        selectItem(itemId);
+        showContextMenu(e.clientX, e.clientY, itemId);
+      }
+    }
+  }
+
   const cursorClass = $derived(panning ? "cursor-grabbing" : "cursor-default");
 </script>
 
@@ -129,6 +144,7 @@
   ondragenter={handleDragEnter}
   ondragleave={handleDragLeave}
   ondrop={handleDrop}
+  oncontextmenu={handleContextMenu}
 >
   <div class="min-h-full flex items-start justify-center p-8">
     <PageCanvas />
