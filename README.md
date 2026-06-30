@@ -9,12 +9,19 @@ A browser-based layout tool for placing images on printable pages at exact physi
 - Resize images to exact physical dimensions in mm or cm
 - Lock/unlock aspect ratio when resizing
 - Crop images with numeric controls and visual crop handles
-- Drag to move images on the page
+- Create rectangles, circles, lines, and editable text
+- Rotate, resize, style, reorder, duplicate, and delete items
+- Shift-select and move, duplicate, or delete multiple items together
+- Layers panel with stacking controls
+- Configurable grid, snap-to-grid, and center guides
+- Drag to move items on the page
 - Visual resize handles (corners and edges)
+- Undo/redo history
 - Export to SVG with physical dimensions
 - Print at correct physical page size
 - Save/load projects via localStorage
 - Import/export projects as JSON
+- Light and dark DaisyUI themes
 
 ## Tech Stack
 
@@ -59,17 +66,26 @@ When you type values in the sidebar, you can switch between mm and cm display. I
 2. **Import an image**: Click "+ Image" and select an image file from your computer.
 3. **Position the image**: Drag it anywhere on the page.
 4. **Resize**: Drag corner/edge handles, or type exact dimensions in the right panel.
-5. **Lock aspect ratio**: Toggle the checkbox in the properties panel to preserve proportions.
-6. **Crop**: Click "Crop Image" to enter crop mode. Adjust crop percentages and apply.
-7. **Export/Print**: Click "Export SVG" for a vector file or "Print" to print at physical size.
+5. **Add artwork**: Use the rectangle, circle, line, and text tools in the toolbar.
+6. **Lock aspect ratio**: Toggle the checkbox in the properties panel to preserve proportions.
+7. **Crop**: Click "Crop Image" and trim visually or enter the amount removed from each edge.
+8. **Arrange**: Shift-click items or layers for multi-selection; use the layer arrows or context menu for stacking.
+9. **Export/Print**: Click "SVG" for a self-contained vector file or "Print" for the exact page size.
 
 ## Keyboard Shortcuts
 
 | Key | Action |
 |-----|--------|
 | Delete / Backspace | Delete selected image |
-| Ctrl/Cmd + D | Duplicate selected image |
+| Ctrl/Cmd + D | Duplicate selected items |
 | Ctrl/Cmd + S | Save to localStorage |
+| Ctrl/Cmd + N | New A4 document |
+| Ctrl/Cmd + Z / Shift + Z | Undo / redo |
+| Ctrl/Cmd + Y | Redo |
+| Ctrl/Cmd + [ / ] | Send to back / bring to front |
+| Arrow keys | Nudge selected items by 1 mm |
+| Shift + Arrow keys | Nudge selected items by 10 mm |
+| Shift + click | Add/remove an item from the selection |
 | Escape | Deselect / exit crop mode |
 
 ## Printing
@@ -112,16 +128,10 @@ src/
 
 ## Known Limitations
 
-- No undo/redo
-- No text tools
-- No drawing tools (rectangles, circles)
-- No multi-select
-- No layers panel
-- No snap-to-grid or guides
-- Crop handles are visual only — numeric crop panel needed for precise values
-- SVG images need to be self-contained (no external references in exported SVG)
-- localStorage limit (~5MB) applies to saved projects with large images
-- No dark mode
+- Multi-selection supports group movement, nudging, duplication, and deletion, but not marquee selection or group resizing.
+- Text uses a small browser-safe font list; custom font embedding is not available.
+- Browser storage quotas still apply to local saves containing large embedded images. JSON export is the durable backup path, and quota failures are reported in the UI.
+- Print margins and scaling must remain disabled in the browser print dialog; TrimKit supplies the exact CSS page size.
 
 ## License
 

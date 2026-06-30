@@ -1,29 +1,27 @@
 <script lang="ts">
   import type { ImageItem } from "../types/document.ts";
-  import { doc, selectItem, resizeItem, beginUndo } from "../stores/documentStore.svelte.ts";
+  import { doc, resizeItem, beginUndo, snapValue } from "../stores/documentStore.svelte.ts";
   import { mmToPx, pxToMm } from "../utils/units.ts";
   import { MIN_SIZE_MM } from "../types/document.ts";
   import ResizeHandles from "./ResizeHandles.svelte";
   import CropHandles from "./CropHandles.svelte";
+  import { getImageSourceFrame } from "../utils/cropGeometry.ts";
 
   let { item }: { item: ImageItem } = $props();
 
-  const selected = $derived(doc.selectedItemId === item.id);
+  const selected = $derived(doc.selectedItemIds.includes(item.id));
+  const primarySelected = $derived(doc.selectedItemId === item.id);
   const cropMode = $derived(doc.cropModeItemId === item.id);
 
   const cropFracW = $derived(item.crop.right - item.crop.left);
   const cropFracH = $derived(item.crop.bottom - item.crop.top);
   const hasCrop = $derived(item.crop.left !== 0 || item.crop.top !== 0 || item.crop.right !== 1 || item.crop.bottom !== 1);
 
-  const rawPxX = $derived(mmToPx(item.xMm, doc.zoom));
-  const rawPxY = $derived(mmToPx(item.yMm, doc.zoom));
-  const rawPxW = $derived(mmToPx(item.widthMm, doc.zoom));
-  const rawPxH = $derived(mmToPx(item.heightMm, doc.zoom));
-
-  const displayX = $derived((hasCrop && !cropMode) ? rawPxX + item.crop.left * rawPxW : rawPxX);
-  const displayY = $derived((hasCrop && !cropMode) ? rawPxY + item.crop.top * rawPxH : rawPxY);
-  const displayW = $derived((hasCrop && !cropMode) ? cropFracW * rawPxW : rawPxW);
-  const displayH = $derived((hasCrop && !cropMode) ? cropFracH * rawPxH : rawPxH);
+  const sourceFrame = $derived(getImageSourceFrame(item));
+  const displayX = $derived(mmToPx(cropMode ? sourceFrame.xMm : item.xMm, doc.zoom));
+  const displayY = $derived(mmToPx(cropMode ? sourceFrame.yMm : item.yMm, doc.zoom));
+  const displayW = $derived(mmToPx(cropMode ? sourceFrame.widthMm : item.widthMm, doc.zoom));
+  const displayH = $derived(mmToPx(cropMode ? sourceFrame.heightMm : item.heightMm, doc.zoom));
 
   const cropViewX = $derived(item.crop.left * item.naturalWidthPx);
   const cropViewY = $derived(item.crop.top * item.naturalHeightPx);
@@ -71,9 +69,7 @@
     if (handle.includes("n")) newH = sh - dy;
 
     if (item.lockedAspectRatio) {
-      const visibleW = (item.crop.right - item.crop.left) * item.naturalWidthPx;
-      const visibleH = (item.crop.bottom - item.crop.top) * item.naturalHeightPx;
-      const aspect = visibleH > 0 ? visibleW / visibleH : 1;
+      const aspect = sw / sh || 1;
 
       const isHorizontal = handle === "e" || handle === "w";
       const isVertical = handle === "n" || handle === "s";
@@ -98,6 +94,11 @@
       newH = Math.max(MIN_SIZE_MM, newH);
     }
 
+    if (!item.lockedAspectRatio) {
+      newW = Math.max(MIN_SIZE_MM, snapValue(newW));
+      newH = Math.max(MIN_SIZE_MM, snapValue(newH));
+    }
+
     let newX = sx;
     let newY = sy;
     if (handle.includes("w")) newX = sx + sw - newW;
@@ -118,7 +119,8 @@
 
 <div
   data-image-item={item.id}
-  style="position: absolute; left: {displayX}px; top: {displayY}px; width: {displayW}px; height: {displayH}px; z-index: {selected ? 10 : 1};"
+  data-document-item
+  style="position: absolute; left: {displayX}px; top: {displayY}px; width: {displayW}px; height: {displayH}px; transform: rotate({cropMode ? 0 : item.rotationDeg}deg); transform-origin: center; z-index: {selected ? 10 : 'auto'}; --item-x: {item.xMm}mm; --item-y: {item.yMm}mm; --item-w: {item.widthMm}mm; --item-h: {item.heightMm}mm;"
   class="cursor-move select-none"
   role="img"
   aria-label={item.name}
@@ -146,7 +148,7 @@
     </svg>
   </div>
 
-  {#if selected && !cropMode}
+  {#if primarySelected && !cropMode}
     <ResizeHandles
       pxW={displayW}
       pxH={displayH}
@@ -158,6 +160,6 @@
   {/if}
 
   {#if cropMode}
-    <CropHandles {item} pxW={rawPxW} pxH={rawPxH} />
+    <CropHandles {item} pxW={displayW} pxH={displayH} />
   {/if}
 </div>

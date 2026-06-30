@@ -11,8 +11,9 @@
     duplicateSelectedItem,
     enterCropMode,
     resetCrop,
+    setItemRotation,
   } from "../stores/documentStore.svelte.ts";
-  import { displayValue, parseInputToMm } from "../utils/units.ts";
+  import { formatDisplay, parseInputToMm } from "../utils/units.ts";
   import CropPanel from "./CropPanel.svelte";
 
   let { item }: { item: ImageItem } = $props();
@@ -23,10 +24,10 @@
   let dispH = $state("");
 
   $effect(() => {
-    dispX = String(displayValue(item.xMm, doc.unit));
-    dispY = String(displayValue(item.yMm, doc.unit));
-    dispW = String(displayValue(item.widthMm, doc.unit));
-    dispH = String(displayValue(item.heightMm, doc.unit));
+    dispX = formatDisplay(item.xMm, doc.unit);
+    dispY = formatDisplay(item.yMm, doc.unit);
+    dispW = formatDisplay(item.widthMm, doc.unit);
+    dispH = formatDisplay(item.heightMm, doc.unit);
   });
 
   function applyX() {
@@ -122,6 +123,11 @@
       <span class="label-text text-xs">Lock aspect ratio</span>
     </label>
   </div>
+
+  <label class="form-control">
+    <span class="label text-xs">Rotation (degrees)</span>
+    <input class="input input-bordered input-sm" type="number" step="1" value={item.rotationDeg} onchange={(e) => setItemRotation(item.id, Number(e.currentTarget.value))} />
+  </label>
 
   <!-- Crop -->
   <div class="pt-3 border-t border-base-300">

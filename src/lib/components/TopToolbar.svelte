@@ -4,19 +4,21 @@
     requestNewDocument,
     addImage,
     addShape,
+    addText,
     saveToLocalStorage,
-    loadFromLocalStorage,
+    requestLoadFromLocalStorage,
     setZoom,
     setUnit,
     exportJson,
-    importJson,
+    requestImportJson,
     undo,
     redo,
     undoState,
+    exitCropMode,
   } from "../stores/documentStore.svelte.ts";
   import { ZOOM_LEVELS, PAGE_TEMPLATES } from "../types/document.ts";
   import { exportDocumentAsSvg } from "../utils/exportSvg.ts";
-  import { ui, toggleTheme, showShortcuts } from "../stores/uiStore.svelte.ts";
+  import { ui, toggleTheme, showShortcuts, showNotice } from "../stores/uiStore.svelte.ts";
 
   let fileInput: HTMLInputElement | undefined = $state();
   let importInput: HTMLInputElement | undefined = $state();
@@ -30,6 +32,9 @@
     if (file) {
       addImage(file).then(() => {
         target.value = "";
+      }).catch(() => {
+        target.value = "";
+        showNotice("The selected image could not be loaded", "error");
       });
     }
   }
@@ -38,9 +43,8 @@
     const target = e.target as HTMLInputElement;
     const file = target.files?.[0];
     if (file) {
-      importJson(file).then(() => {
-        target.value = "";
-      });
+      requestImportJson(file);
+      target.value = "";
     }
   }
 
@@ -67,18 +71,19 @@
   }
 
   function handlePrint() {
-    window.print();
+    exitCropMode();
+    requestAnimationFrame(() => window.print());
   }
 </script>
 
-<div class="no-print navbar gap-2 px-4 py-2 bg-base-100 border-b border-base-300 shadow-sm flex-wrap h-auto min-h-0">
+<div class="no-print navbar gap-2 px-3 py-2 bg-base-100 border-b border-base-300 shadow-sm flex-wrap h-auto min-h-0">
   <!-- Brand -->
   <div class="flex items-center gap-1.5">
     <img src="/trimkit-icon.svg" alt="TrimKit" width="20" height="20" class="rounded" />
-    <span class="text-sm font-semibold text-base-content/80 hidden sm:inline">TrimKit</span>
+    <span class="text-sm font-semibold text-base-content/80 hidden xl:inline">TrimKit</span>
   </div>
 
-  <div class="divider divider-horizontal mx-1 hidden sm:flex"></div>
+  <div class="divider divider-horizontal mx-0 hidden xl:flex"></div>
 
   <!-- Undo / Redo -->
   <div class="join">
@@ -89,7 +94,7 @@
       title="Undo"
     >
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
-      <kbd class="kbd kbd-xs ml-0.5">{modKey}Z</kbd>
+      <kbd class="kbd kbd-xs ml-0.5 hidden xl:inline-flex">{modKey}Z</kbd>
     </button>
     <button
       class="join-item btn btn-sm btn-ghost"
@@ -98,11 +103,11 @@
       title="Redo"
     >
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-      <kbd class="kbd kbd-xs ml-0.5">{modKey}Y</kbd>
+      <kbd class="kbd kbd-xs ml-0.5 hidden xl:inline-flex">{modKey}Y</kbd>
     </button>
   </div>
 
-  <div class="divider divider-horizontal mx-1"></div>
+  <div class="divider divider-horizontal mx-0 hidden xl:flex"></div>
 
   <!-- Document Actions -->
   <div class="flex items-center gap-2">
@@ -112,7 +117,7 @@
       title="New A4 document"
     >
       New
-      <kbd class="kbd kbd-xs">{modKey}N</kbd>
+      <kbd class="kbd kbd-xs hidden xl:inline-flex">{modKey}N</kbd>
     </button>
 
     <select
@@ -127,7 +132,7 @@
     </select>
   </div>
 
-  <div class="divider divider-horizontal mx-1"></div>
+  <div class="divider divider-horizontal mx-0 hidden xl:flex"></div>
 
   <!-- Add Image / Shapes -->
   <div class="join">
@@ -142,13 +147,15 @@
       class="join-item btn btn-sm btn-outline"
       onclick={() => addShape("rect")}
       title="Add rectangle"
+      aria-label="Add rectangle"
     >
       □
     </button>
     <button
       class="join-item btn btn-sm btn-outline"
       onclick={() => addShape("ellipse")}
-      title="Add ellipse"
+      title="Add circle"
+      aria-label="Add circle"
     >
       ○
     </button>
@@ -156,9 +163,11 @@
       class="join-item btn btn-sm btn-outline"
       onclick={() => addShape("line")}
       title="Add line"
+      aria-label="Add line"
     >
       ╱
     </button>
+    <button class="join-item btn btn-sm btn-outline" onclick={addText} title="Add text" aria-label="Add text">T</button>
   </div>
   <input
     type="file"
@@ -168,7 +177,7 @@
     onchange={handleImageFile}
   />
 
-  <div class="divider divider-horizontal mx-1"></div>
+  <div class="divider divider-horizontal mx-0 hidden xl:flex"></div>
 
   <!-- Unit & Zoom -->
   <select
@@ -188,7 +197,7 @@
       title="Zoom out"
     >
       −
-      <kbd class="kbd kbd-xs ml-1">{modKey}-</kbd>
+      <kbd class="kbd kbd-xs ml-1 hidden xl:inline-flex">{modKey}-</kbd>
     </button>
 
     <select
@@ -208,20 +217,20 @@
       title="Zoom in"
     >
       +
-      <kbd class="kbd kbd-xs ml-1">{modKey}+</kbd>
+      <kbd class="kbd kbd-xs ml-1 hidden xl:inline-flex">{modKey}+</kbd>
     </button>
   </div>
 
   <button
-    class="btn btn-sm btn-ghost"
+    class="btn btn-sm btn-ghost hidden xl:inline-flex"
     onclick={() => setZoom(1)}
     title="Reset zoom"
   >
     100%
-    <kbd class="kbd kbd-xs ml-1">{modKey}0</kbd>
+    <kbd class="kbd kbd-xs ml-1 hidden xl:inline-flex">{modKey}0</kbd>
   </button>
 
-  <div class="divider divider-horizontal mx-1"></div>
+  <div class="divider divider-horizontal mx-0 hidden xl:flex"></div>
 
   <!-- Export & Print -->
   <button class="btn btn-sm btn-ghost" onclick={handleExportSvg} title="Export as SVG">
@@ -231,28 +240,22 @@
     Print
   </button>
 
-  <div class="divider divider-horizontal mx-1"></div>
+  <div class="divider divider-horizontal mx-0 hidden xl:flex"></div>
 
-  <!-- Save/Load -->
-  <button
-    class="btn btn-sm {doc.dirty ? 'btn-warning' : 'btn-ghost'}"
-    onclick={() => saveToLocalStorage()}
-    title="Save to browser storage"
-  >
-    Save
-    {#if doc.dirty}<span class="badge badge-xs badge-warning ml-1"></span>{/if}
-    <kbd class="kbd kbd-xs ml-1">{modKey}S</kbd>
-  </button>
-
-  <button class="btn btn-sm btn-ghost" onclick={() => loadFromLocalStorage()} title="Load from browser storage">
-    Load
-  </button>
-  <button class="btn btn-sm btn-ghost" onclick={handleExportJson} title="Export project as JSON">
-    ↓ JSON
-  </button>
-  <button class="btn btn-sm btn-ghost" onclick={() => importInput?.click()} title="Import project JSON">
-    ↑ JSON
-  </button>
+  <!-- Project persistence -->
+  <div class="dropdown dropdown-end">
+    <button class="btn btn-sm {doc.dirty ? 'btn-warning' : 'btn-ghost'}" type="button" tabindex="0">
+      Project
+      {#if doc.dirty}<span class="badge badge-xs badge-warning"></span>{/if}
+      <span aria-hidden="true">▾</span>
+    </button>
+    <ul class="dropdown-content menu bg-base-100 rounded-box z-50 w-52 p-2 shadow-xl border border-base-300">
+      <li><button onclick={() => saveToLocalStorage()}>Save to browser <kbd class="kbd kbd-xs ml-auto">{modKey}S</kbd></button></li>
+      <li><button onclick={requestLoadFromLocalStorage}>Load saved project</button></li>
+      <li><button onclick={handleExportJson}>Export project JSON</button></li>
+      <li><button onclick={() => importInput?.click()}>Import project JSON</button></li>
+    </ul>
+  </div>
   <input type="file" accept=".json" class="hidden" bind:this={importInput} onchange={handleImportJson} />
 
   <div class="flex-1"></div>

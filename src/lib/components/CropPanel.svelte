@@ -16,8 +16,8 @@
     if (!lastAppliedCrop || lastAppliedCrop.left !== c.left || lastAppliedCrop.top !== c.top || lastAppliedCrop.right !== c.right || lastAppliedCrop.bottom !== c.bottom) {
       cropLeft = String((c.left * 100).toFixed(1));
       cropTop = String((c.top * 100).toFixed(1));
-      cropRight = String((c.right * 100).toFixed(1));
-      cropBottom = String((c.bottom * 100).toFixed(1));
+      cropRight = String(((1 - c.right) * 100).toFixed(1));
+      cropBottom = String(((1 - c.bottom) * 100).toFixed(1));
       lastAppliedCrop = { ...c };
     }
   });
@@ -25,8 +25,8 @@
   function applyCrop() {
     let left = parseFloat(cropLeft) / 100;
     let top = parseFloat(cropTop) / 100;
-    let right = parseFloat(cropRight) / 100;
-    let bottom = parseFloat(cropBottom) / 100;
+    let right = 1 - parseFloat(cropRight) / 100;
+    let bottom = 1 - parseFloat(cropBottom) / 100;
 
     if (isNaN(left) || left < 0) left = 0;
     if (isNaN(top) || top < 0) top = 0;
@@ -43,11 +43,11 @@
 </script>
 
 <div class="space-y-3">
-  <h4 class="text-xs font-medium text-base-content/50 uppercase tracking-wide">Crop Values (%)</h4>
+  <h4 class="text-xs font-medium text-base-content/50 uppercase tracking-wide">Trim from edge (%)</h4>
 
   <div class="grid grid-cols-2 gap-2">
     <div>
-      <label class="block text-xs text-base-content/60 mb-1" for={`crop-left-${item.id}`}>Left</label>
+      <label class="block text-xs text-base-content/60 mb-1" for={`crop-left-${item.id}`}>Left trim</label>
       <input
         id={`crop-left-${item.id}`}
         type="number"
@@ -57,7 +57,7 @@
       />
     </div>
     <div>
-      <label class="block text-xs text-base-content/60 mb-1" for={`crop-top-${item.id}`}>Top</label>
+      <label class="block text-xs text-base-content/60 mb-1" for={`crop-top-${item.id}`}>Top trim</label>
       <input
         id={`crop-top-${item.id}`}
         type="number"
@@ -70,7 +70,7 @@
 
   <div class="grid grid-cols-2 gap-2">
     <div>
-      <label class="block text-xs text-base-content/60 mb-1" for={`crop-right-${item.id}`}>Right</label>
+      <label class="block text-xs text-base-content/60 mb-1" for={`crop-right-${item.id}`}>Right trim</label>
       <input
         id={`crop-right-${item.id}`}
         type="number"
@@ -80,7 +80,7 @@
       />
     </div>
     <div>
-      <label class="block text-xs text-base-content/60 mb-1" for={`crop-bottom-${item.id}`}>Bottom</label>
+      <label class="block text-xs text-base-content/60 mb-1" for={`crop-bottom-${item.id}`}>Bottom trim</label>
       <input
         id={`crop-bottom-${item.id}`}
         type="number"

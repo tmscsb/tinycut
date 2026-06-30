@@ -19,6 +19,7 @@
     bringToFront,
     sendToBack,
     getItem,
+    requestNewDocument,
   } from "./lib/stores/documentStore.svelte.ts";
   import {
     ui,
@@ -32,7 +33,7 @@
 
   onMount(() => {
     initTheme();
-    loadFromLocalStorage();
+    loadFromLocalStorage(false);
 
     function isInputFocused(): boolean {
       const t = document.activeElement as HTMLElement;
@@ -80,6 +81,12 @@
       if (mod && e.key.toLowerCase() === "s") {
         e.preventDefault();
         saveToLocalStorage();
+        return;
+      }
+
+      if (mod && e.key.toLowerCase() === "n") {
+        e.preventDefault();
+        requestNewDocument("a4-portrait");
         return;
       }
 
@@ -162,13 +169,21 @@
   });
 </script>
 
-<div class="h-full flex flex-col bg-base-200 print-page-container">
+<div class="h-full flex flex-col bg-base-200 app-shell">
   <TopToolbar />
   <div class="flex flex-1 overflow-hidden">
     <Workspace />
     <PropertiesPanel />
   </div>
 </div>
+
+{#if ui.notice}
+  <div class="toast toast-top toast-center z-[200] no-print" role="status">
+    <div class="alert {ui.notice.type === 'success' ? 'alert-success' : ui.notice.type === 'error' ? 'alert-error' : 'alert-info'} shadow-lg py-2 px-4">
+      <span>{ui.notice.message}</span>
+    </div>
+  </div>
+{/if}
 
 <ShortcutsModal />
 

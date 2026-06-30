@@ -1,13 +1,14 @@
 <script lang="ts">
   import type { ShapeItem } from "../types/document.ts";
-  import { doc, selectItem, resizeItem, beginUndo } from "../stores/documentStore.svelte.ts";
+  import { doc, resizeItem, beginUndo, snapValue } from "../stores/documentStore.svelte.ts";
   import { mmToPx, pxToMm } from "../utils/units.ts";
   import { MIN_SIZE_MM } from "../types/document.ts";
   import ResizeHandles from "./ResizeHandles.svelte";
 
   let { item }: { item: ShapeItem } = $props();
 
-  const selected = $derived(doc.selectedItemId === item.id);
+  const selected = $derived(doc.selectedItemIds.includes(item.id));
+  const primarySelected = $derived(doc.selectedItemId === item.id);
 
   const pxX = $derived(mmToPx(item.xMm, doc.zoom));
   const pxY = $derived(mmToPx(item.yMm, doc.zoom));
@@ -73,6 +74,11 @@
       newH = Math.max(MIN_SIZE_MM, newH);
     }
 
+    if (!item.lockedAspectRatio) {
+      newW = Math.max(MIN_SIZE_MM, snapValue(newW));
+      newH = Math.max(MIN_SIZE_MM, snapValue(newH));
+    }
+
     let newX = sx;
     let newY = sy;
     if (handle.includes("w")) newX = sx + sw - newW;
@@ -93,7 +99,8 @@
 
 <div
   data-image-item={item.id}
-  style="position: absolute; left: {pxX}px; top: {pxY}px; width: {pxW}px; height: {pxH}px; z-index: {selected ? 10 : 1};"
+  data-document-item
+  style="position: absolute; left: {pxX}px; top: {pxY}px; width: {pxW}px; height: {pxH}px; transform: rotate({item.rotationDeg}deg); transform-origin: center; z-index: {selected ? 10 : 'auto'}; --item-x: {item.xMm}mm; --item-y: {item.yMm}mm; --item-w: {item.widthMm}mm; --item-h: {item.heightMm}mm;"
   class="cursor-move select-none"
   role="figure"
   aria-label={item.name}
@@ -141,7 +148,7 @@
     {/if}
   </svg>
 
-  {#if selected}
+  {#if primarySelected}
     <ResizeHandles
       {pxW}
       {pxH}

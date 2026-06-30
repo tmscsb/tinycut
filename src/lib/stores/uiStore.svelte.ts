@@ -6,7 +6,18 @@ export const ui = $state({
   pendingAction: null as (() => void) | null,
   theme: "light" as Theme,
   contextMenu: null as { x: number; y: number; itemId: string } | null,
+  notice: null as { message: string; type: "success" | "error" | "info" } | null,
 });
+
+let noticeTimer: ReturnType<typeof setTimeout> | undefined;
+
+export function showNotice(message: string, type: "success" | "error" | "info" = "info"): void {
+  ui.notice = { message, type };
+  if (noticeTimer) clearTimeout(noticeTimer);
+  noticeTimer = setTimeout(() => {
+    ui.notice = null;
+  }, 3500);
+}
 
 export function toggleTheme(): void {
   ui.theme = ui.theme === "light" ? "dark" : "light";

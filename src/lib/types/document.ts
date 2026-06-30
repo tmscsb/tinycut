@@ -49,7 +49,25 @@ export type ShapeItem = {
   cornerRadiusMm: number;
 };
 
-export type DocumentItem = ImageItem | ShapeItem;
+export type TextItem = {
+  id: string;
+  type: "text";
+  name: string;
+  text: string;
+  xMm: number;
+  yMm: number;
+  widthMm: number;
+  heightMm: number;
+  rotationDeg: number;
+  lockedAspectRatio: boolean;
+  fontSizeMm: number;
+  fontFamily: string;
+  fontWeight: "400" | "600" | "700";
+  textAlign: "left" | "center" | "right";
+  color: string;
+};
+
+export type DocumentItem = ImageItem | ShapeItem | TextItem;
 
 export type Page = {
   templateId: string;
@@ -59,11 +77,17 @@ export type Page = {
 };
 
 export type DocumentState = {
+  version: 2;
   page: Page;
   items: DocumentItem[];
   selectedItemId: string | null;
+  selectedItemIds: string[];
   zoom: number;
   unit: Unit;
+  gridSizeMm: number;
+  showGrid: boolean;
+  snapToGrid: boolean;
+  showGuides: boolean;
   cropModeItemId: string | null;
   dirty: boolean;
 };
@@ -81,4 +105,4 @@ export const ZOOM_LEVELS = [0.25, 0.5, 0.75, 1, 1.5, 2];
 
 export const LOCAL_STORAGE_KEY = "trimkit-document";
 
-export const MIN_SIZE_MM = 5;
+export const MIN_SIZE_MM = 1;

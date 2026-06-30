@@ -1,9 +1,14 @@
 <script lang="ts">
-  import { doc, requestNewDocument, setPageSize } from "../stores/documentStore.svelte.ts";
+  import { doc, requestNewDocument, setPageSize, setGridSettings } from "../stores/documentStore.svelte.ts";
   import { PAGE_TEMPLATES } from "../types/document.ts";
 
   let customW = $state(String(doc.page.widthMm));
   let customH = $state(String(doc.page.heightMm));
+
+  $effect(() => {
+    customW = String(doc.page.widthMm);
+    customH = String(doc.page.heightMm);
+  });
 
   function applyCustom() {
     const w = parseFloat(customW);
@@ -75,5 +80,18 @@
     >
       Apply Custom Size
     </button>
+  </div>
+
+  <div class="pt-3 border-t border-base-300">
+    <h4 class="text-xs font-medium text-base-content/50 uppercase tracking-wide mb-2">Grid &amp; guides</h4>
+    <label class="form-control mb-2">
+      <span class="label text-xs">Grid size (mm)</span>
+      <input class="input input-bordered input-sm" type="number" min="1" step="1" value={doc.gridSizeMm} onchange={(e) => setGridSettings({ gridSizeMm: Number(e.currentTarget.value) })} />
+    </label>
+    <div class="space-y-1">
+      <label class="label cursor-pointer"><span class="label-text text-xs">Show grid</span><input class="toggle toggle-sm toggle-primary" type="checkbox" checked={doc.showGrid} onchange={(e) => setGridSettings({ showGrid: e.currentTarget.checked })} /></label>
+      <label class="label cursor-pointer"><span class="label-text text-xs">Snap to grid</span><input class="toggle toggle-sm toggle-primary" type="checkbox" checked={doc.snapToGrid} onchange={(e) => setGridSettings({ snapToGrid: e.currentTarget.checked })} /></label>
+      <label class="label cursor-pointer"><span class="label-text text-xs">Center guides</span><input class="toggle toggle-sm toggle-primary" type="checkbox" checked={doc.showGuides} onchange={(e) => setGridSettings({ showGuides: e.currentTarget.checked })} /></label>
+    </div>
   </div>
 </div>

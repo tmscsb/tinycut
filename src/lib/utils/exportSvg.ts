@@ -1,4 +1,4 @@
-import type { DocumentState, DocumentItem, ImageItem, ShapeItem } from "../types/document.ts";
+import type { DocumentState, DocumentItem, ImageItem, ShapeItem, TextItem } from "../types/document.ts";
 
 export function exportDocumentAsSvg(state: DocumentState): string {
   const { page, items } = state;
@@ -23,9 +23,42 @@ export function exportDocumentAsSvg(state: DocumentState): string {
 }
 
 function renderItemToSvg(item: DocumentItem): string {
-  if (item.type === "image") return renderImageToSvg(item);
-  if (item.type === "shape") return renderShapeToSvg(item);
-  return "";
+  const content = item.type === "image"
+    ? renderImageToSvg(item)
+    : item.type === "shape" ? renderShapeToSvg(item) : renderTextToSvg(item);
+  if (!item.rotationDeg) return content;
+  const centerX = item.xMm + item.widthMm / 2;
+  const centerY = item.yMm + item.heightMm / 2;
+  return `\n  <g transform="rotate(${item.rotationDeg} ${centerX} ${centerY})">${content}\n  </g>`;
+}
+
+function escapeXml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+function renderTextToSvg(item: TextItem): string {
+  const anchor = item.textAlign === "center" ? "middle" : item.textAlign === "right" ? "end" : "start";
+  const x = item.textAlign === "center"
+    ? item.xMm + item.widthMm / 2
+    : item.textAlign === "right" ? item.xMm + item.widthMm : item.xMm;
+  const lines = item.text.split("\n");
+  const tspans = lines.map((line, index) =>
+    `<tspan x="${x}" dy="${index === 0 ? 0 : item.fontSizeMm * 1.2}">${escapeXml(line)}</tspan>`,
+  ).join("");
+  return `
+  <text
+    x="${x}"
+    y="${item.yMm + item.fontSizeMm}"
+    fill="${item.color}"
+    font-family="${escapeXml(item.fontFamily)}"
+    font-size="${item.fontSizeMm}"
+    font-weight="${item.fontWeight}"
+    text-anchor="${anchor}"
+  >${tspans}</text>`;
 }
 
 function renderImageToSvg(item: ImageItem): string {
@@ -38,20 +71,14 @@ function renderImageToSvg(item: ImageItem): string {
   const hasCrop = crop.left !== 0 || crop.top !== 0 || crop.right !== 1 || crop.bottom !== 1;
 
   if (hasCrop) {
-    const cropFracW = crop.right - crop.left;
-    const cropFracH = crop.bottom - crop.top;
-    const outX = item.xMm + crop.left * item.widthMm;
-    const outY = item.yMm + crop.top * item.heightMm;
-    const outW = cropFracW * item.widthMm;
-    const outH = cropFracH * item.heightMm;
-
     return `
   <svg
-    x="${outX}"
-    y="${outY}"
-    width="${outW}"
-    height="${outH}"
+    x="${item.xMm}"
+    y="${item.yMm}"
+    width="${item.widthMm}"
+    height="${item.heightMm}"
     viewBox="${cropX} ${cropY} ${cropW} ${cropH}"
+    preserveAspectRatio="none"
   >
     <image
       href="${item.src}"

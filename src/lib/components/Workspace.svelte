@@ -1,5 +1,12 @@
 <script lang="ts">
-  import { doc, selectItem, moveItem, addImage, beginUndo } from "../stores/documentStore.svelte.ts";
+  import {
+    doc,
+    selectItem,
+    moveItemsByDelta,
+    addImage,
+    beginUndo,
+    snapValue,
+  } from "../stores/documentStore.svelte.ts";
   import { showContextMenu } from "../stores/uiStore.svelte.ts";
   import { pxToMm } from "../utils/units.ts";
   import PageCanvas from "./PageCanvas.svelte";
@@ -10,6 +17,7 @@
   let dragItemId = $state<string | null>(null);
   let dragStartPx = $state({ x: 0, y: 0 });
   let dragStartMm = $state({ x: 0, y: 0 });
+  let dragStarts = $state<Record<string, { xMm: number; yMm: number }>>({});
 
   let panning = $state(false);
   let panStart = $state({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
@@ -39,18 +47,28 @@
     if (itemEl) {
       const itemId = itemEl.dataset.imageItem;
       if (itemId) {
+        if (e.shiftKey) {
+          selectItem(itemId, true);
+          dragging = false;
+          return;
+        }
         selectItem(itemId);
         dragItemId = itemId;
         const item = doc.items.find((i) => i.id === itemId);
         if (item) {
           beginUndo();
           dragStartMm = { x: item.xMm, y: item.yMm };
+          dragStarts = Object.fromEntries(
+            doc.items
+              .filter((candidate) => doc.selectedItemIds.includes(candidate.id))
+              .map((candidate) => [candidate.id, { xMm: candidate.xMm, yMm: candidate.yMm }]),
+          );
           dragStartPx = { x: e.clientX, y: e.clientY };
         }
         (itemEl as HTMLElement).setPointerCapture(e.pointerId);
       }
     } else {
-      selectItem(null);
+      if (!e.shiftKey) selectItem(null);
     }
   }
 
@@ -68,7 +86,9 @@
     const dxPx = e.clientX - dragStartPx.x;
     const dyPx = e.clientY - dragStartPx.y;
 
-    moveItem(dragItemId, dragStartMm.x + pxToMm(dxPx, doc.zoom), dragStartMm.y + pxToMm(dyPx, doc.zoom));
+    const targetX = snapValue(dragStartMm.x + pxToMm(dxPx, doc.zoom));
+    const targetY = snapValue(dragStartMm.y + pxToMm(dyPx, doc.zoom));
+    moveItemsByDelta(doc.selectedItemIds, targetX - dragStartMm.x, targetY - dragStartMm.y, dragStarts);
   }
 
   function handlePointerUp(e: PointerEvent) {

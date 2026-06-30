@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { ImageItem, ImageCrop } from "../types/document.ts";
-  import { updateItem, beginUndo } from "../stores/documentStore.svelte.ts";
+  import { updateCrop, beginUndo } from "../stores/documentStore.svelte.ts";
 
   let { item, pxW, pxH }: {
     item: ImageItem;
@@ -60,7 +60,7 @@
       }
     }
 
-    updateItem(item.id, { crop });
+    updateCrop(item.id, crop);
   }
 
   function endDrag(e: PointerEvent) {

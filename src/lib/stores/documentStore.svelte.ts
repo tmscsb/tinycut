@@ -4,6 +4,7 @@ import {
   type ImageItem,
   type ShapeItem,
   type ShapeType,
+  type TextItem,
   type ImageCrop,
   type Unit,
   PAGE_TEMPLATES,
@@ -12,16 +13,27 @@ import {
 } from "../types/document.ts";
 import { createId } from "../utils/ids.ts";
 import { loadImageFile } from "../utils/image.ts";
-import { confirmAction } from "./uiStore.svelte.ts";
+import { confirmAction, showNotice } from "./uiStore.svelte.ts";
+import {
+  applyCropToImageFrame,
+  migrateLegacyCropGeometry,
+  normalizeCrop,
+} from "../utils/cropGeometry.ts";
 
 function defaultDoc(): DocumentState {
   const tpl = PAGE_TEMPLATES[0];
   return {
+    version: 2,
     page: { templateId: tpl.id, name: tpl.name, widthMm: tpl.widthMm, heightMm: tpl.heightMm },
     items: [],
     selectedItemId: null,
-    zoom: 1,
+    selectedItemIds: [],
+    zoom: 0.75,
     unit: "mm",
+    gridSizeMm: 5,
+    showGrid: false,
+    snapToGrid: false,
+    showGuides: false,
     cropModeItemId: null,
     dirty: false,
   };
@@ -102,6 +114,7 @@ export function createNewDocument(templateId: string): void {
   if (tpl) {
     Object.assign(doc, defaultDoc());
     doc.page = { templateId: tpl.id, name: tpl.name, widthMm: tpl.widthMm, heightMm: tpl.heightMm };
+    clearHistory();
   }
 }
 
@@ -124,8 +137,24 @@ export function setPageSize(widthMm: number, heightMm: number): void {
 
 // ── Selection ─────────────────────────────────────────────────────────
 
-export function selectItem(id: string | null): void {
-  doc.selectedItemId = id;
+export function selectItem(id: string | null, additive = false): void {
+  if (id === null) {
+    doc.selectedItemId = null;
+    doc.selectedItemIds = [];
+  } else if (additive) {
+    if (doc.selectedItemIds.includes(id)) {
+      doc.selectedItemIds = doc.selectedItemIds.filter((selectedId) => selectedId !== id);
+      doc.selectedItemId = doc.selectedItemIds.at(-1) ?? null;
+    } else {
+      doc.selectedItemIds = [...doc.selectedItemIds, id];
+      doc.selectedItemId = id;
+    }
+  } else if (!doc.selectedItemIds.includes(id)) {
+    doc.selectedItemId = id;
+    doc.selectedItemIds = [id];
+  } else {
+    doc.selectedItemId = id;
+  }
   doc.cropModeItemId = null;
 }
 
@@ -135,7 +164,9 @@ export async function addImage(file: File): Promise<void> {
   const { src, naturalWidthPx, naturalHeightPx } = await loadImageFile(file);
 
   const aspect = naturalWidthPx / naturalHeightPx;
-  const defaultWidthMm = 80;
+  const maxWidthMm = Math.max(MIN_SIZE_MM, doc.page.widthMm - 20);
+  const maxHeightMm = Math.max(MIN_SIZE_MM, doc.page.heightMm - 20);
+  const defaultWidthMm = Math.min(80, maxWidthMm, maxHeightMm * aspect);
   const defaultHeightMm = defaultWidthMm / aspect;
 
   const item: ImageItem = {
@@ -143,8 +174,8 @@ export async function addImage(file: File): Promise<void> {
     type: "image",
     name: file.name,
     src,
-    xMm: 10,
-    yMm: 10,
+    xMm: (doc.page.widthMm - defaultWidthMm) / 2,
+    yMm: (doc.page.heightMm - defaultHeightMm) / 2,
     widthMm: Math.max(MIN_SIZE_MM, defaultWidthMm),
     heightMm: Math.max(MIN_SIZE_MM, defaultHeightMm),
     naturalWidthPx,
@@ -157,14 +188,15 @@ export async function addImage(file: File): Promise<void> {
   pushUndo();
   doc.items.push(item);
   doc.selectedItemId = item.id;
+  doc.selectedItemIds = [item.id];
   markDirty();
 }
 
 // ── Shapes ────────────────────────────────────────────────────────────
 
 export function addShape(shapeType: ShapeType): void {
-  const count = doc.items.filter((i) => i.type === "shape").length + 1;
-  const name = shapeType.charAt(0).toUpperCase() + shapeType.slice(1);
+  const count = doc.items.filter((item) => item.type === "shape" && item.shapeType === shapeType).length + 1;
+  const name = shapeType === "ellipse" ? "Circle" : shapeType.charAt(0).toUpperCase() + shapeType.slice(1);
 
   const item: ShapeItem = {
     id: createId("shp"),
@@ -173,10 +205,10 @@ export function addShape(shapeType: ShapeType): void {
     name: `${name} ${count}`,
     xMm: 40,
     yMm: 40,
-    widthMm: 80,
-    heightMm: shapeType === "line" ? 60 : 60,
+    widthMm: shapeType === "ellipse" ? 60 : 80,
+    heightMm: 60,
     rotationDeg: 0,
-    lockedAspectRatio: false,
+    lockedAspectRatio: shapeType === "ellipse",
     fill: shapeType === "line" ? "none" : "#3b82f6",
     stroke: "#1e40af",
     strokeWidthMm: 1,
@@ -186,6 +218,41 @@ export function addShape(shapeType: ShapeType): void {
   pushUndo();
   doc.items.push(item);
   doc.selectedItemId = item.id;
+  doc.selectedItemIds = [item.id];
+  markDirty();
+}
+
+export function addText(): void {
+  const count = doc.items.filter((item) => item.type === "text").length + 1;
+  const item: TextItem = {
+    id: createId("txt"),
+    type: "text",
+    name: `Text ${count}`,
+    text: "Edit this text",
+    xMm: 30,
+    yMm: 30,
+    widthMm: Math.max(20, Math.min(100, doc.page.widthMm - 40)),
+    heightMm: 20,
+    rotationDeg: 0,
+    lockedAspectRatio: false,
+    fontSizeMm: 6,
+    fontFamily: "Arial, sans-serif",
+    fontWeight: "400",
+    textAlign: "left",
+    color: "#111827",
+  };
+  pushUndo();
+  doc.items.push(item);
+  doc.selectedItemId = item.id;
+  doc.selectedItemIds = [item.id];
+  markDirty();
+}
+
+export function updateText(id: string, patch: Partial<TextItem>): void {
+  const item = getItemById(id);
+  if (!item || item.type !== "text") return;
+  pushUndo();
+  Object.assign(item, patch);
   markDirty();
 }
 
@@ -209,7 +276,8 @@ export function setShapeStrokeWidth(id: string, mm: number): void {
   const item = getItemById(id);
   if (!item || item.type !== "shape") return;
   pushUndo();
-  item.strokeWidthMm = Math.max(0, mm);
+  const maxStroke = item.shapeType === "line" ? Math.max(item.widthMm, item.heightMm) : Math.min(item.widthMm, item.heightMm);
+  item.strokeWidthMm = Math.max(0, Math.min(maxStroke, mm));
   markDirty();
 }
 
@@ -217,39 +285,42 @@ export function setShapeCornerRadius(id: string, mm: number): void {
   const item = getItemById(id);
   if (!item || item.type !== "shape") return;
   pushUndo();
-  item.cornerRadiusMm = Math.max(0, mm);
-  markDirty();
-}
-
-// ── Generic Item Mutations ────────────────────────────────────────────
-
-export function updateItem(id: string, patch: Partial<DocumentItem>): void {
-  const idx = doc.items.findIndex((i) => i.id === id);
-  if (idx === -1) return;
-  doc.items[idx] = { ...doc.items[idx], ...patch };
+  item.cornerRadiusMm = Math.max(0, Math.min(Math.min(item.widthMm, item.heightMm) / 2, mm));
   markDirty();
 }
 
 export function deleteSelectedItem(): void {
-  if (!doc.selectedItemId) return;
+  const selectedIds = doc.selectedItemIds.length
+    ? doc.selectedItemIds
+    : doc.selectedItemId ? [doc.selectedItemId] : [];
+  if (!selectedIds.length) return;
   pushUndo();
-  doc.items = doc.items.filter((i) => i.id !== doc.selectedItemId);
+  doc.items = doc.items.filter((i) => !selectedIds.includes(i.id));
   doc.selectedItemId = null;
+  doc.selectedItemIds = [];
   markDirty();
 }
 
 export function duplicateSelectedItem(): void {
-  const item = getSelectedItem();
-  if (!item) return;
-
-  const prefix = item.type === "image" ? "img" : "shp";
-  const clone = { ...item, id: createId(prefix), name: item.name + " copy" };
-  clone.xMm += 10;
-  clone.yMm += 10;
-
+  const selectedIds = doc.selectedItemIds.length
+    ? doc.selectedItemIds
+    : doc.selectedItemId ? [doc.selectedItemId] : [];
+  const items = doc.items.filter((item) => selectedIds.includes(item.id));
+  if (!items.length) return;
   pushUndo();
-  (doc.items as DocumentItem[]).push(clone);
-  doc.selectedItemId = clone.id;
+  const clones = items.map((item) => {
+    const prefix = item.type === "image" ? "img" : item.type === "text" ? "txt" : "shp";
+    return {
+      ...item,
+      id: createId(prefix),
+      name: item.name + " copy",
+      xMm: item.xMm + 10,
+      yMm: item.yMm + 10,
+    } as DocumentItem;
+  });
+  doc.items.push(...clones);
+  doc.selectedItemIds = clones.map((item) => item.id);
+  doc.selectedItemId = clones.at(-1)?.id ?? null;
   markDirty();
 }
 
@@ -303,12 +374,45 @@ export function moveItem(id: string, xMm: number, yMm: number): void {
   markDirty();
 }
 
+export function moveItemsByDelta(
+  ids: string[],
+  dxMm: number,
+  dyMm: number,
+  starts: Record<string, { xMm: number; yMm: number }>,
+): void {
+  for (const id of ids) {
+    const item = getItemById(id);
+    const start = starts[id];
+    if (!item || !start) continue;
+    item.xMm = start.xMm + dxMm;
+    item.yMm = start.yMm + dyMm;
+  }
+  markDirty();
+}
+
+export function snapValue(value: number): number {
+  if (!doc.snapToGrid || doc.gridSizeMm <= 0) return value;
+  return Math.round(value / doc.gridSizeMm) * doc.gridSizeMm;
+}
+
 export function nudgeItem(id: string, dxMm: number, dyMm: number): void {
-  const item = getItemById(id);
-  if (!item) return;
+  const ids = doc.selectedItemIds.includes(id) ? doc.selectedItemIds : [id];
+  if (!ids.length) return;
   pushUndo();
-  item.xMm += dxMm;
-  item.yMm += dyMm;
+  for (const selectedId of ids) {
+    const item = getItemById(selectedId);
+    if (!item) continue;
+    item.xMm += dxMm;
+    item.yMm += dyMm;
+  }
+  markDirty();
+}
+
+export function setGridSettings(
+  patch: Partial<Pick<DocumentState, "gridSizeMm" | "showGrid" | "snapToGrid" | "showGuides">>,
+): void {
+  Object.assign(doc, patch);
+  doc.gridSizeMm = Math.max(1, doc.gridSizeMm);
   markDirty();
 }
 
@@ -316,13 +420,10 @@ export function setItemWidth(id: string, widthMm: number): void {
   const item = getItemById(id);
   if (!item) return;
   pushUndo();
+  const aspect = item.widthMm / item.heightMm || 1;
   const w = Math.max(MIN_SIZE_MM, widthMm);
   item.widthMm = w;
-  if (item.type === "image" && item.lockedAspectRatio) {
-    const aspect = getVisibleAspect(item);
-    item.heightMm = Math.max(MIN_SIZE_MM, w / aspect);
-  } else if (item.lockedAspectRatio) {
-    const aspect = item.widthMm / item.heightMm;
+  if (item.lockedAspectRatio) {
     item.heightMm = Math.max(MIN_SIZE_MM, w / aspect);
   }
   markDirty();
@@ -332,10 +433,10 @@ export function setItemHeight(id: string, heightMm: number): void {
   const item = getItemById(id);
   if (!item) return;
   pushUndo();
+  const aspect = item.widthMm / item.heightMm || 1;
   const h = Math.max(MIN_SIZE_MM, heightMm);
   item.heightMm = h;
   if (item.lockedAspectRatio) {
-    const aspect = item.widthMm / item.heightMm || 1;
     item.widthMm = Math.max(MIN_SIZE_MM, h * aspect);
   }
   markDirty();
@@ -373,6 +474,14 @@ export function setItemY(id: string, yMm: number): void {
   markDirty();
 }
 
+export function setItemRotation(id: string, degrees: number): void {
+  const item = getItemById(id);
+  if (!item || !Number.isFinite(degrees)) return;
+  pushUndo();
+  item.rotationDeg = ((degrees % 360) + 360) % 360;
+  markDirty();
+}
+
 export function setLockedAspect(id: string, locked: boolean): void {
   const item = getItemById(id);
   if (!item) return;
@@ -387,7 +496,14 @@ export function setCrop(id: string, crop: ImageCrop): void {
   const item = getItemById(id);
   if (!item || item.type !== "image") return;
   pushUndo();
-  item.crop = { ...crop };
+  Object.assign(item, applyCropToImageFrame(item, crop));
+  markDirty();
+}
+
+export function updateCrop(id: string, crop: ImageCrop): void {
+  const item = getItemById(id);
+  if (!item || item.type !== "image") return;
+  Object.assign(item, applyCropToImageFrame(item, crop));
   markDirty();
 }
 
@@ -395,7 +511,7 @@ export function resetCrop(id: string): void {
   const item = getItemById(id);
   if (!item || item.type !== "image") return;
   pushUndo();
-  item.crop = { left: 0, top: 0, right: 1, bottom: 1 };
+  Object.assign(item, applyCropToImageFrame(item, { left: 0, top: 0, right: 1, bottom: 1 }));
   markDirty();
 }
 
@@ -424,22 +540,34 @@ export function saveToLocalStorage(): void {
     const data = JSON.stringify(doc);
     localStorage.setItem(LOCAL_STORAGE_KEY, data);
     doc.dirty = false;
+    showNotice("Project saved in this browser", "success");
   } catch {
-    // Storage full or unavailable
+    showNotice("Could not save: browser storage is unavailable or full", "error");
   }
 }
 
-export function loadFromLocalStorage(): boolean {
+export function loadFromLocalStorage(showFeedback = true): boolean {
   try {
     const data = localStorage.getItem(LOCAL_STORAGE_KEY);
-    if (!data) return false;
-    const parsed = JSON.parse(data) as DocumentState;
+    if (!data) {
+      if (showFeedback) showNotice("No saved project was found", "info");
+      return false;
+    }
+    const parsed = normalizeDocument(JSON.parse(data));
     Object.assign(doc, parsed);
     doc.dirty = false;
+    clearHistory();
+    if (showFeedback) showNotice("Saved project loaded", "success");
     return true;
   } catch {
+    if (showFeedback) showNotice("The saved project is invalid or unreadable", "error");
     return false;
   }
+}
+
+export function requestLoadFromLocalStorage(): void {
+  if (doc.dirty) confirmAction(() => loadFromLocalStorage());
+  else loadFromLocalStorage();
 }
 
 export function exportJson(): string {
@@ -448,7 +576,72 @@ export function exportJson(): string {
 
 export async function importJson(file: File): Promise<void> {
   const text = await file.text();
-  const parsed = JSON.parse(text) as DocumentState;
+  const parsed = normalizeDocument(JSON.parse(text));
   Object.assign(doc, parsed);
   doc.dirty = false;
+  clearHistory();
+  showNotice("Project imported", "success");
+}
+
+export function requestImportJson(file: File): void {
+  const action = () => {
+    importJson(file).catch(() => showNotice("The selected project file is invalid", "error"));
+  };
+  if (doc.dirty) confirmAction(action);
+  else action();
+}
+
+function clearHistory(): void {
+  undoStack = [];
+  redoStack = [];
+  syncUndoFlags();
+}
+
+function normalizeDocument(value: unknown): DocumentState {
+  if (!value || typeof value !== "object") throw new Error("Invalid project file");
+  const input = value as Partial<DocumentState> & { version?: number };
+  if (!input.page || !Array.isArray(input.items)) throw new Error("Invalid project file");
+  if (!Number.isFinite(input.page.widthMm) || !Number.isFinite(input.page.heightMm)) {
+    throw new Error("Invalid page dimensions");
+  }
+
+  const legacy = input.version !== 2;
+  const items = input.items.map((item) => {
+    if (
+      !item ||
+      typeof item !== "object" ||
+      (item.type !== "image" && item.type !== "shape" && item.type !== "text")
+    ) {
+      throw new Error("Invalid project item");
+    }
+    if (![item.xMm, item.yMm, item.widthMm, item.heightMm].every(Number.isFinite)) {
+      throw new Error("Invalid item dimensions");
+    }
+    if (item.type === "image") {
+      const normalized = { ...item, crop: normalizeCrop(item.crop ?? { left: 0, top: 0, right: 1, bottom: 1 }) };
+      return legacy ? migrateLegacyCropGeometry(normalized) : normalized;
+    }
+    return { ...item };
+  });
+
+  return {
+    version: 2,
+    page: {
+      templateId: String(input.page.templateId ?? "custom"),
+      name: String(input.page.name ?? "Custom"),
+      widthMm: Math.max(10, input.page.widthMm),
+      heightMm: Math.max(10, input.page.heightMm),
+    },
+    items,
+    selectedItemId: null,
+    selectedItemIds: [],
+    zoom: Number.isFinite(input.zoom) ? Math.max(0.1, Math.min(5, input.zoom!)) : 1,
+    unit: input.unit === "cm" ? "cm" : "mm",
+    gridSizeMm: Number.isFinite(input.gridSizeMm) ? Math.max(1, input.gridSizeMm!) : 5,
+    showGrid: input.showGrid === true,
+    snapToGrid: input.snapToGrid === true,
+    showGuides: input.showGuides === true,
+    cropModeItemId: null,
+    dirty: false,
+  };
 }
