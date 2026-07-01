@@ -17,7 +17,7 @@ A browser-based layout tool for placing images on printable pages at exact physi
 - Drag to move items on the page
 - Visual resize handles (corners and edges)
 - Undo/redo history
-- Export to SVG with physical dimensions
+- Export to layered SVG with physical dimensions or PNG at selectable 300, 600, or 1200 DPI
 - Print at correct physical page size
 - Save/load projects via localStorage
 - Import/export projects as JSON
@@ -70,7 +70,7 @@ When you type values in the sidebar, you can switch between mm and cm display. I
 6. **Lock aspect ratio**: Toggle the checkbox in the properties panel to preserve proportions.
 7. **Crop**: Click "Crop Image" and trim visually or enter the amount removed from each edge.
 8. **Arrange**: Shift-click items or layers for multi-selection; use the layer arrows or context menu for stacking.
-9. **Export/Print**: Click "SVG" for a self-contained vector file or "Print" for the exact page size.
+9. **Export/Print**: Click "SVG" for a self-contained layered vector file, or choose 300, 600, or 1200 DPI and click "PNG" for a raster file. PNG defaults to 600 DPI.
 
 ## Keyboard Shortcuts
 

@@ -22,12 +22,14 @@
   let dispY = $state("");
   let dispW = $state("");
   let dispH = $state("");
+  let dispRotation = $state("");
 
   $effect(() => {
     dispX = formatDisplay(item.xMm, doc.unit);
     dispY = formatDisplay(item.yMm, doc.unit);
     dispW = formatDisplay(item.widthMm, doc.unit);
     dispH = formatDisplay(item.heightMm, doc.unit);
+    dispRotation = item.rotationDeg.toFixed(2);
   });
 
   function applyX() {
@@ -45,6 +47,19 @@
   function applyH() {
     const v = parseFloat(dispH);
     if (!isNaN(v) && v > 0) setItemHeight(item.id, parseInputToMm(v, doc.unit));
+  }
+  function applyRotation() {
+    const v = parseFloat(dispRotation);
+    if (!isNaN(v)) setItemRotation(item.id, v);
+  }
+  function rotateBy(deltaDeg: number) {
+    setItemRotation(item.id, item.rotationDeg + deltaDeg);
+  }
+  function applyRotationOnEnter(e: KeyboardEvent) {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    applyRotation();
+    (e.currentTarget as HTMLInputElement).blur();
   }
 </script>
 
@@ -126,7 +141,34 @@
 
   <label class="form-control">
     <span class="label text-xs">Rotation (degrees)</span>
-    <input class="input input-bordered input-sm" type="number" step="1" value={item.rotationDeg} onchange={(e) => setItemRotation(item.id, Number(e.currentTarget.value))} />
+    <div class="join w-full">
+      <button
+        class="join-item btn btn-sm btn-outline"
+        type="button"
+        title="Rotate left 90 degrees"
+        aria-label="Rotate left 90 degrees"
+        onclick={() => rotateBy(-90)}
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-15-6.7L3 13"/></svg>
+      </button>
+      <input
+        class="join-item input input-bordered input-sm min-w-0 flex-1"
+        type="number"
+        step="0.01"
+        bind:value={dispRotation}
+        onchange={applyRotation}
+        onkeydown={applyRotationOnEnter}
+      />
+      <button
+        class="join-item btn btn-sm btn-outline"
+        type="button"
+        title="Rotate right 90 degrees"
+        aria-label="Rotate right 90 degrees"
+        onclick={() => rotateBy(90)}
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 15-6.7L21 13"/></svg>
+      </button>
+    </div>
   </label>
 
   <!-- Crop -->

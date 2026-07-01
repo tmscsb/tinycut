@@ -17,11 +17,13 @@
     exitCropMode,
   } from "../stores/documentStore.svelte.ts";
   import { ZOOM_LEVELS, PAGE_TEMPLATES } from "../types/document.ts";
-  import { exportDocumentAsSvg } from "../utils/exportSvg.ts";
+  import { exportDocumentAsPng } from "../utils/exportPng.ts";
   import { ui, toggleTheme, showShortcuts, showNotice } from "../stores/uiStore.svelte.ts";
 
   let fileInput: HTMLInputElement | undefined = $state();
   let importInput: HTMLInputElement | undefined = $state();
+  let exportingPng = $state(false);
+  let pngDpi = $state(600);
 
   const isMac = typeof navigator !== "undefined" && navigator.platform.includes("Mac");
   const modKey = isMac ? "⌘" : "Ctrl";
@@ -48,15 +50,22 @@
     }
   }
 
-  function handleExportSvg() {
-    const svg = exportDocumentAsSvg(doc);
-    const blob = new Blob([svg], { type: "image/svg+xml" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "trimkit-export.svg";
-    a.click();
-    URL.revokeObjectURL(url);
+  async function handleExportPng() {
+    if (exportingPng) return;
+    exportingPng = true;
+    try {
+      const blob = await exportDocumentAsPng(doc, pngDpi);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "trimkit-export.png";
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch {
+      showNotice("The PNG export could not be created", "error");
+    } finally {
+      exportingPng = false;
+    }
   }
 
   function handleExportJson() {
@@ -233,9 +242,22 @@
   <div class="divider divider-horizontal mx-0 hidden xl:flex"></div>
 
   <!-- Export & Print -->
-  <button class="btn btn-sm btn-ghost" onclick={handleExportSvg} title="Export as SVG">
-    SVG
-  </button>
+  <div class="join">
+    <button class="join-item btn btn-sm btn-ghost" onclick={handleExportPng} disabled={exportingPng} title={`Export as PNG at ${pngDpi} DPI`}>
+      {exportingPng ? "Exporting…" : "PNG"}
+    </button>
+    <select
+      class="join-item select select-sm select-bordered w-24"
+      bind:value={pngDpi}
+      disabled={exportingPng}
+      title="PNG export resolution"
+      aria-label="PNG export resolution"
+    >
+      <option value={300}>300 DPI</option>
+      <option value={600}>600 DPI</option>
+      <option value={1200}>1200 DPI</option>
+    </select>
+  </div>
   <button class="btn btn-sm btn-ghost" onclick={handlePrint} title="Print">
     Print
   </button>

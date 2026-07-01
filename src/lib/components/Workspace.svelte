@@ -166,7 +166,7 @@
   ondrop={handleDrop}
   oncontextmenu={handleContextMenu}
 >
-  <div class="min-h-full flex items-start justify-center p-8">
+  <div class="workspace-stage min-h-full flex items-start justify-center">
     <PageCanvas />
   </div>
 

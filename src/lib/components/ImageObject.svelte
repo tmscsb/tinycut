@@ -5,9 +5,9 @@
   import { MIN_SIZE_MM } from "../types/document.ts";
   import ResizeHandles from "./ResizeHandles.svelte";
   import CropHandles from "./CropHandles.svelte";
-  import { getImageSourceFrame } from "../utils/cropGeometry.ts";
+  import { getImageCropTransformOrigin, getImageSourceFrame } from "../utils/cropGeometry.ts";
 
-  let { item }: { item: ImageItem } = $props();
+  let { item, zIndex }: { item: ImageItem; zIndex: number } = $props();
 
   const selected = $derived(doc.selectedItemIds.includes(item.id));
   const primarySelected = $derived(doc.selectedItemId === item.id);
@@ -18,10 +18,13 @@
   const hasCrop = $derived(item.crop.left !== 0 || item.crop.top !== 0 || item.crop.right !== 1 || item.crop.bottom !== 1);
 
   const sourceFrame = $derived(getImageSourceFrame(item));
+  const cropTransformOrigin = $derived(getImageCropTransformOrigin(item));
   const displayX = $derived(mmToPx(cropMode ? sourceFrame.xMm : item.xMm, doc.zoom));
   const displayY = $derived(mmToPx(cropMode ? sourceFrame.yMm : item.yMm, doc.zoom));
   const displayW = $derived(mmToPx(cropMode ? sourceFrame.widthMm : item.widthMm, doc.zoom));
   const displayH = $derived(mmToPx(cropMode ? sourceFrame.heightMm : item.heightMm, doc.zoom));
+  const transformOriginX = $derived(cropMode ? mmToPx(cropTransformOrigin.xMm, doc.zoom) : displayW / 2);
+  const transformOriginY = $derived(cropMode ? mmToPx(cropTransformOrigin.yMm, doc.zoom) : displayH / 2);
 
   const cropViewX = $derived(item.crop.left * item.naturalWidthPx);
   const cropViewY = $derived(item.crop.top * item.naturalHeightPx);
@@ -120,16 +123,13 @@
 <div
   data-image-item={item.id}
   data-document-item
-  style="position: absolute; left: {displayX}px; top: {displayY}px; width: {displayW}px; height: {displayH}px; transform: rotate({cropMode ? 0 : item.rotationDeg}deg); transform-origin: center; z-index: {selected ? 10 : 'auto'}; --item-x: {item.xMm}mm; --item-y: {item.yMm}mm; --item-w: {item.widthMm}mm; --item-h: {item.heightMm}mm;"
+  style="position: absolute; left: {displayX}px; top: {displayY}px; width: {displayW}px; height: {displayH}px; transform: rotate({item.rotationDeg}deg); transform-origin: {transformOriginX}px {transformOriginY}px; z-index: {zIndex}; --item-x: {item.xMm}mm; --item-y: {item.yMm}mm; --item-w: {item.widthMm}mm; --item-h: {item.heightMm}mm;"
   class="cursor-move select-none"
   role="img"
   aria-label={item.name}
 >
   <div
     class="absolute inset-0 overflow-hidden"
-    class:ring-2={selected && !cropMode}
-    class:ring-primary={selected && !cropMode}
-    class:ring-offset-1={selected && !cropMode}
   >
     <svg
       width="100%"
@@ -146,6 +146,10 @@
         height={item.naturalHeightPx}
       />
     </svg>
+
+    {#if selected && !cropMode}
+      <div class="absolute inset-0 border border-primary pointer-events-none"></div>
+    {/if}
   </div>
 
   {#if primarySelected && !cropMode}

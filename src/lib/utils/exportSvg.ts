@@ -5,8 +5,8 @@ export function exportDocumentAsSvg(state: DocumentState): string {
 
   let inner = "";
 
-  for (const item of items) {
-    inner += renderItemToSvg(item);
+  for (const [index, item] of items.entries()) {
+    inner += renderItemToSvg(item, index);
   }
 
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -16,20 +16,27 @@ export function exportDocumentAsSvg(state: DocumentState): string {
   viewBox="0 0 ${page.widthMm} ${page.heightMm}"
   xmlns="http://www.w3.org/2000/svg"
   xmlns:xlink="http://www.w3.org/1999/xlink"
+  xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
 >
   <rect width="${page.widthMm}" height="${page.heightMm}" fill="white" />
   ${inner}
 </svg>`;
 }
 
-function renderItemToSvg(item: DocumentItem): string {
+function renderItemToSvg(item: DocumentItem, index: number): string {
   const content = item.type === "image"
-    ? renderImageToSvg(item)
+    ? renderImageToSvg(item, index)
     : item.type === "shape" ? renderShapeToSvg(item) : renderTextToSvg(item);
-  if (!item.rotationDeg) return content;
   const centerX = item.xMm + item.widthMm / 2;
   const centerY = item.yMm + item.heightMm / 2;
-  return `\n  <g transform="rotate(${item.rotationDeg} ${centerX} ${centerY})">${content}\n  </g>`;
+  const transform = item.rotationDeg
+    ? ` transform="rotate(${item.rotationDeg} ${centerX} ${centerY})"`
+    : "";
+  return `\n  <g id="layer-${index}-${safeId(item.id)}" data-layer-index="${index}" data-item-type="${item.type}" inkscape:groupmode="layer" inkscape:label="${escapeXml(item.name)}"${transform}>${content}\n  </g>`;
+}
+
+function safeId(value: string): string {
+  return value.replace(/[^a-zA-Z0-9_.-]/g, "-");
 }
 
 function escapeXml(value: string): string {
@@ -61,7 +68,7 @@ function renderTextToSvg(item: TextItem): string {
   >${tspans}</text>`;
 }
 
-function renderImageToSvg(item: ImageItem): string {
+function renderImageToSvg(item: ImageItem, index: number): string {
   const crop = item.crop;
   const cropX = crop.left * item.naturalWidthPx;
   const cropY = crop.top * item.naturalHeightPx;
@@ -71,32 +78,39 @@ function renderImageToSvg(item: ImageItem): string {
   const hasCrop = crop.left !== 0 || crop.top !== 0 || crop.right !== 1 || crop.bottom !== 1;
 
   if (hasCrop) {
+    const scaleX = item.widthMm / cropW;
+    const scaleY = item.heightMm / cropH;
+    const imageX = item.xMm - cropX * scaleX;
+    const imageY = item.yMm - cropY * scaleY;
+    const clipId = `clip-${index}-${safeId(item.id)}`;
     return `
-  <svg
-    x="${item.xMm}"
-    y="${item.yMm}"
-    width="${item.widthMm}"
-    height="${item.heightMm}"
-    viewBox="${cropX} ${cropY} ${cropW} ${cropH}"
-    preserveAspectRatio="none"
-  >
+    <defs>
+      <clipPath id="${clipId}">
+        <rect x="${item.xMm}" y="${item.yMm}" width="${item.widthMm}" height="${item.heightMm}" />
+      </clipPath>
+    </defs>
     <image
-      href="${item.src}"
-      x="0"
-      y="0"
-      width="${item.naturalWidthPx}"
-      height="${item.naturalHeightPx}"
+      href="${escapeXml(item.src)}"
+      xlink:href="${escapeXml(item.src)}"
+      x="${imageX}"
+      y="${imageY}"
+      width="${item.naturalWidthPx * scaleX}"
+      height="${item.naturalHeightPx * scaleY}"
+      preserveAspectRatio="none"
+      clip-path="url(#${clipId})"
     />
-  </svg>`;
+  `;
   }
 
   return `
   <image
-    href="${item.src}"
+    href="${escapeXml(item.src)}"
+    xlink:href="${escapeXml(item.src)}"
     x="${item.xMm}"
     y="${item.yMm}"
     width="${item.widthMm}"
     height="${item.heightMm}"
+    preserveAspectRatio="none"
   />`;
 }
 

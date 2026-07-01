@@ -5,7 +5,7 @@
   import { MIN_SIZE_MM } from "../types/document.ts";
   import ResizeHandles from "./ResizeHandles.svelte";
 
-  let { item }: { item: ShapeItem } = $props();
+  let { item, zIndex }: { item: ShapeItem; zIndex: number } = $props();
 
   const selected = $derived(doc.selectedItemIds.includes(item.id));
   const primarySelected = $derived(doc.selectedItemId === item.id);
@@ -100,7 +100,7 @@
 <div
   data-image-item={item.id}
   data-document-item
-  style="position: absolute; left: {pxX}px; top: {pxY}px; width: {pxW}px; height: {pxH}px; transform: rotate({item.rotationDeg}deg); transform-origin: center; z-index: {selected ? 10 : 'auto'}; --item-x: {item.xMm}mm; --item-y: {item.yMm}mm; --item-w: {item.widthMm}mm; --item-h: {item.heightMm}mm;"
+  style="position: absolute; left: {pxX}px; top: {pxY}px; width: {pxW}px; height: {pxH}px; transform: rotate({item.rotationDeg}deg); transform-origin: center; z-index: {zIndex}; --item-x: {item.xMm}mm; --item-y: {item.yMm}mm; --item-w: {item.widthMm}mm; --item-h: {item.heightMm}mm;"
   class="cursor-move select-none"
   role="figure"
   aria-label={item.name}

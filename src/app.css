@@ -20,6 +20,12 @@ html, body, #app {
   background-size: 20px 20px;
 }
 
+/* Pasteboard space keeps off-page objects and their handles reachable. */
+.workspace-stage {
+  min-width: max-content;
+  padding: 12rem;
+}
+
 .page-grid {
   background-image:
     linear-gradient(to right, color-mix(in srgb, var(--color-base-content) 12%, transparent) 1px, transparent 1px),
@@ -73,6 +79,10 @@ img {
     padding: 0 !important;
     width: var(--page-w) !important;
     height: var(--page-h) !important;
+  }
+
+  .workspace-stage {
+    padding: 0 !important;
   }
 
   .print-page {

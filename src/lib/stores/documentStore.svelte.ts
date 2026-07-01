@@ -107,6 +107,10 @@ function getVisibleAspect(item: ImageItem): number {
   return cropW / cropH;
 }
 
+function normalizeRotation(degrees: number): number {
+  return Math.round((((degrees % 360) + 360) % 360) * 100) / 100;
+}
+
 // ── Document ──────────────────────────────────────────────────────────
 
 export function createNewDocument(templateId: string): void {
@@ -477,8 +481,10 @@ export function setItemY(id: string, yMm: number): void {
 export function setItemRotation(id: string, degrees: number): void {
   const item = getItemById(id);
   if (!item || !Number.isFinite(degrees)) return;
+  const rotation = normalizeRotation(degrees);
+  if (item.rotationDeg === rotation) return;
   pushUndo();
-  item.rotationDeg = ((degrees % 360) + 360) % 360;
+  item.rotationDeg = rotation;
   markDirty();
 }
 
@@ -619,9 +625,10 @@ function normalizeDocument(value: unknown): DocumentState {
     }
     if (item.type === "image") {
       const normalized = { ...item, crop: normalizeCrop(item.crop ?? { left: 0, top: 0, right: 1, bottom: 1 }) };
+      normalized.rotationDeg = normalizeRotation(Number(normalized.rotationDeg) || 0);
       return legacy ? migrateLegacyCropGeometry(normalized) : normalized;
     }
-    return { ...item };
+    return { ...item, rotationDeg: normalizeRotation(Number(item.rotationDeg) || 0) };
   });
 
   return {

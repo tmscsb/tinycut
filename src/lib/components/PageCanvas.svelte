@@ -23,7 +23,7 @@
 
 <div class="print-page-container relative pb-8" style="--page-w: {doc.page.widthMm}mm; --page-h: {doc.page.heightMm}mm;">
   <div
-    class="print-page bg-white shadow-xl relative overflow-hidden"
+    class="print-page bg-white shadow-xl relative overflow-visible"
     class:page-grid={doc.showGrid}
     style="width: {pagePxWidth}px; height: {pagePxHeight}px; --grid-size: {gridPx}px"
   >
@@ -31,13 +31,13 @@
       <div class="no-print absolute inset-y-0 left-1/2 border-l border-dashed border-info/45 pointer-events-none z-30"></div>
       <div class="no-print absolute inset-x-0 top-1/2 border-t border-dashed border-info/45 pointer-events-none z-30"></div>
     {/if}
-    {#each doc.items as item (item.id)}
+    {#each doc.items as item, index (item.id)}
       {#if item.type === "image"}
-        <ImageObject item={item} />
+        <ImageObject item={item} zIndex={index + 1} />
       {:else if item.type === "shape"}
-        <ShapeObject item={item} />
+        <ShapeObject item={item} zIndex={index + 1} />
       {:else if item.type === "text"}
-        <TextObject item={item} />
+        <TextObject item={item} zIndex={index + 1} />
       {/if}
     {/each}
   </div>

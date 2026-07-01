@@ -46,6 +46,33 @@ export function getImageSourceFrame(item: ImageItem): {
   };
 }
 
+export function getImageCropTransformOrigin(item: ImageItem): { xMm: number; yMm: number } {
+  const source = getImageSourceFrame(item);
+  return {
+    xMm: item.xMm + item.widthMm / 2 - source.xMm,
+    yMm: item.yMm + item.heightMm / 2 - source.yMm,
+  };
+}
+
+export function screenDeltaToLocalCropPercent(
+  dxPx: number,
+  dyPx: number,
+  rotationDeg: number,
+  widthPx: number,
+  heightPx: number,
+): { dxPercent: number; dyPercent: number } {
+  const radians = rotationDeg * Math.PI / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  const localDxPx = cos * dxPx + sin * dyPx;
+  const localDyPx = -sin * dxPx + cos * dyPx;
+
+  return {
+    dxPercent: widthPx === 0 ? 0 : localDxPx / widthPx,
+    dyPercent: heightPx === 0 ? 0 : localDyPx / heightPx,
+  };
+}
+
 export function applyCropToImageFrame(
   item: ImageItem,
   requestedCrop: ImageCrop,

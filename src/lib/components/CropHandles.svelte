@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ImageItem, ImageCrop } from "../types/document.ts";
   import { updateCrop, beginUndo } from "../stores/documentStore.svelte.ts";
+  import { screenDeltaToLocalCropPercent } from "../utils/cropGeometry.ts";
 
   let { item, pxW, pxH }: {
     item: ImageItem;
@@ -31,8 +32,7 @@
 
     const dxPx = e.clientX - dragStartPx.x;
     const dyPx = e.clientY - dragStartPx.y;
-    const dxPercent = dxPx / pxW;
-    const dyPercent = dyPx / pxH;
+    const { dxPercent, dyPercent } = screenDeltaToLocalCropPercent(dxPx, dyPx, item.rotationDeg, pxW, pxH);
 
     const crop: ImageCrop = { ...dragStartCrop };
 
