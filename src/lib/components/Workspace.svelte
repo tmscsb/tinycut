@@ -5,10 +5,12 @@
     moveItemsByDelta,
     addImage,
     beginUndo,
+    endUndo,
     snapValue,
+    setZoom,
   } from "../stores/documentStore.svelte.ts";
-  import { showContextMenu } from "../stores/uiStore.svelte.ts";
-  import { pxToMm } from "../utils/units.ts";
+  import { ui, showContextMenu, showNotice } from "../stores/uiStore.svelte.ts";
+  import { mmToPx, pxToMm } from "../utils/units.ts";
   import PageCanvas from "./PageCanvas.svelte";
 
   let workspaceEl: HTMLDivElement | undefined = $state();
@@ -23,6 +25,33 @@
   let panStart = $state({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
 
   let isFileDragOver = $state(false);
+  let handledFitRequest = $state(0);
+
+  function fitPage() {
+    if (!workspaceEl) return;
+    const padding = Number.parseFloat(
+      getComputedStyle(workspaceEl).getPropertyValue("--workspace-padding"),
+    ) || 64;
+    const availableWidth = Math.max(80, workspaceEl.clientWidth - padding * 2);
+    const availableHeight = Math.max(80, workspaceEl.clientHeight - padding * 2 - 32);
+    const zoom = Math.min(
+      availableWidth / mmToPx(doc.page.widthMm),
+      availableHeight / mmToPx(doc.page.heightMm),
+    );
+    setZoom(Math.floor(zoom * 100) / 100);
+    requestAnimationFrame(() => {
+      if (!workspaceEl) return;
+      workspaceEl.scrollLeft = Math.max(0, (workspaceEl.scrollWidth - workspaceEl.clientWidth) / 2);
+      workspaceEl.scrollTop = Math.max(0, (workspaceEl.scrollHeight - workspaceEl.clientHeight) / 2);
+    });
+  }
+
+  $effect(() => {
+    const request = ui.fitPageRequest;
+    if (request === 0 || request === handledFitRequest) return;
+    handledFitRequest = request;
+    requestAnimationFrame(fitPage);
+  });
 
   function handlePointerDown(e: PointerEvent) {
     const target = e.target as HTMLElement;
@@ -36,6 +65,7 @@
         scrollLeft: workspaceEl?.scrollLeft ?? 0,
         scrollTop: workspaceEl?.scrollTop ?? 0,
       };
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
       return;
     }
 
@@ -94,10 +124,15 @@
   function handlePointerUp(e: PointerEvent) {
     if (panning) {
       panning = false;
-      return;
     }
     dragging = false;
     dragItemId = null;
+    endUndo();
+    try {
+      workspaceEl?.releasePointerCapture(e.pointerId);
+    } catch {
+      // already released or the pointer was captured by an item handle
+    }
   }
 
   function handleDragOver(e: DragEvent) {
@@ -113,23 +148,32 @@
 
   function handleDragLeave(e: DragEvent) {
     const relatedTarget = e.relatedTarget as Node | null;
-    if (!e.currentTarget.contains(relatedTarget)) {
+    if (!(e.currentTarget as HTMLElement).contains(relatedTarget)) {
       isFileDragOver = false;
     }
   }
 
-  function handleDrop(e: DragEvent) {
+  async function handleDrop(e: DragEvent) {
     e.preventDefault();
     isFileDragOver = false;
 
     const files = e.dataTransfer?.files;
     if (!files) return;
 
-    for (const file of Array.from(files)) {
-      if (file.type.startsWith("image/")) {
-        addImage(file);
+    const imageFiles = Array.from(files).filter((file) => file.type.startsWith("image/"));
+    if (!imageFiles.length) {
+      showNotice("Drop one or more image files to add them", "info");
+      return;
+    }
+    let failed = 0;
+    for (const file of imageFiles) {
+      try {
+        await addImage(file);
+      } catch {
+        failed += 1;
       }
     }
+    if (failed) showNotice(`${failed} image${failed === 1 ? "" : "s"} could not be loaded`, "error");
   }
 
   function handleContextMenu(e: MouseEvent) {
@@ -148,7 +192,7 @@
   const cursorClass = $derived(panning ? "cursor-grabbing" : "cursor-default");
 </script>
 
-<svelte:window onpointerup={handlePointerUp} />
+<svelte:window onpointerup={handlePointerUp} onpointercancel={handlePointerUp} />
 
 <div
   class="workspace-bg flex-1 overflow-auto relative {cursorClass}"

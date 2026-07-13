@@ -1,15 +1,17 @@
 <script lang="ts">
+  import type { ResizeHandle } from "../utils/resizeGeometry.ts";
+
   let { pxW, pxH, onResizeStart, onResizeMove, onResizeEnd, resizing }: {
     pxW: number;
     pxH: number;
-    onResizeStart: (e: PointerEvent, handle: string) => void;
+    onResizeStart: (e: PointerEvent, handle: ResizeHandle) => void;
     onResizeMove: (e: PointerEvent) => void;
     onResizeEnd: (e: PointerEvent) => void;
     resizing: boolean;
   } = $props();
 
   const HANDLE_SIZE = 10;
-  const handles = $derived([
+  const handles: { id: ResizeHandle; x: number; y: number; cursor: string }[] = $derived([
     { id: "nw", x: 0, y: 0, cursor: "nw-resize" },
     { id: "n", x: pxW / 2, y: 0, cursor: "n-resize" },
     { id: "ne", x: pxW, y: 0, cursor: "ne-resize" },
@@ -32,11 +34,10 @@
       height: {HANDLE_SIZE}px;
       cursor: {h.cursor};
     "
-    role="button"
-    tabindex="-1"
-    aria-label="Resize handle {h.id}"
+    aria-hidden="true"
     onpointerdown={(e) => onResizeStart(e, h.id)}
     onpointermove={(e) => resizing && onResizeMove(e)}
     onpointerup={onResizeEnd}
+    onpointercancel={onResizeEnd}
   ></div>
 {/each}

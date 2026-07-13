@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { ImageItem, ImageCrop } from "../types/document.ts";
-  import { updateCrop, beginUndo } from "../stores/documentStore.svelte.ts";
+  import { updateCrop, beginUndo, endUndo } from "../stores/documentStore.svelte.ts";
   import { screenDeltaToLocalCropPercent } from "../utils/cropGeometry.ts";
 
   let { item, pxW, pxH }: {
@@ -66,6 +66,7 @@
   function endDrag(e: PointerEvent) {
     dragging = false;
     handleId = "";
+    endUndo();
     try {
       (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
     } catch {
@@ -80,7 +81,7 @@
 </script>
 
 <!-- Dark overlay outside crop region -->
-<div class="absolute inset-0 pointer-events-none z-10">
+<div class="no-print absolute inset-0 pointer-events-none z-10">
   <div class="absolute bg-black/40" style="left: 0; top: 0; width: {cropLeftPct}%; height: 100%;"></div>
   <div class="absolute bg-black/40" style="right: 0; top: 0; width: {100 - item.crop.right * 100}%; height: 100%;"></div>
   <div class="absolute bg-black/40" style="left: {cropLeftPct}%; top: 0; width: {cropWidthPct}%; height: {cropTopPct}%;"></div>
@@ -89,72 +90,79 @@
 
 <!-- Crop frame + handles -->
 <div
-  class="absolute z-20 border-2 border-dashed border-warning cursor-move"
+  class="no-print absolute z-20 border-2 border-dashed border-warning cursor-move"
   style="left: {cropLeftPct}%; top: {cropTopPct}%; width: {cropWidthPct}%; height: {cropHeightPct}%;"
-  role="button"
-  tabindex="-1"
-  aria-label="Move crop region"
+  aria-hidden="true"
   onpointerdown={(e) => startDrag(e, "move")}
   onpointermove={onMove}
   onpointerup={endDrag}
+  onpointercancel={endDrag}
 >
   <!-- Edge handles -->
   <div
     class="absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 w-1.5 h-8 bg-warning cursor-ew-resize pointer-events-auto rounded-sm"
-    role="button" tabindex="-1" aria-label="Crop left edge"
+    aria-hidden="true"
     onpointerdown={(e) => startDrag(e, "l")}
     onpointermove={onMove}
     onpointerup={endDrag}
+    onpointercancel={endDrag}
   ></div>
   <div
     class="absolute right-0 top-1/2 translate-x-1/2 -translate-y-1/2 w-1.5 h-8 bg-warning cursor-ew-resize pointer-events-auto rounded-sm"
-    role="button" tabindex="-1" aria-label="Crop right edge"
+    aria-hidden="true"
     onpointerdown={(e) => startDrag(e, "r")}
     onpointermove={onMove}
     onpointerup={endDrag}
+    onpointercancel={endDrag}
   ></div>
   <div
     class="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-1.5 bg-warning cursor-ns-resize pointer-events-auto rounded-sm"
-    role="button" tabindex="-1" aria-label="Crop top edge"
+    aria-hidden="true"
     onpointerdown={(e) => startDrag(e, "t")}
     onpointermove={onMove}
     onpointerup={endDrag}
+    onpointercancel={endDrag}
   ></div>
   <div
     class="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-8 h-1.5 bg-warning cursor-ns-resize pointer-events-auto rounded-sm"
-    role="button" tabindex="-1" aria-label="Crop bottom edge"
+    aria-hidden="true"
     onpointerdown={(e) => startDrag(e, "b")}
     onpointermove={onMove}
     onpointerup={endDrag}
+    onpointercancel={endDrag}
   ></div>
 
   <!-- Corner handles -->
   <div
     class="absolute left-0 top-0 -translate-x-1/2 -translate-y-1/2 w-3 h-3 bg-warning cursor-nw-resize pointer-events-auto rounded-sm border border-white/50"
-    role="button" tabindex="-1" aria-label="Crop top-left corner"
+    aria-hidden="true"
     onpointerdown={(e) => startDrag(e, "lt")}
     onpointermove={onMove}
     onpointerup={endDrag}
+    onpointercancel={endDrag}
   ></div>
   <div
     class="absolute right-0 top-0 translate-x-1/2 -translate-y-1/2 w-3 h-3 bg-warning cursor-ne-resize pointer-events-auto rounded-sm border border-white/50"
-    role="button" tabindex="-1" aria-label="Crop top-right corner"
+    aria-hidden="true"
     onpointerdown={(e) => startDrag(e, "rt")}
     onpointermove={onMove}
     onpointerup={endDrag}
+    onpointercancel={endDrag}
   ></div>
   <div
     class="absolute left-0 bottom-0 -translate-x-1/2 translate-y-1/2 w-3 h-3 bg-warning cursor-sw-resize pointer-events-auto rounded-sm border border-white/50"
-    role="button" tabindex="-1" aria-label="Crop bottom-left corner"
+    aria-hidden="true"
     onpointerdown={(e) => startDrag(e, "lb")}
     onpointermove={onMove}
     onpointerup={endDrag}
+    onpointercancel={endDrag}
   ></div>
   <div
     class="absolute right-0 bottom-0 translate-x-1/2 translate-y-1/2 w-3 h-3 bg-warning cursor-se-resize pointer-events-auto rounded-sm border border-white/50"
-    role="button" tabindex="-1" aria-label="Crop bottom-right corner"
+    aria-hidden="true"
     onpointerdown={(e) => startDrag(e, "rb")}
     onpointermove={onMove}
     onpointerup={endDrag}
+    onpointercancel={endDrag}
   ></div>
 </div>

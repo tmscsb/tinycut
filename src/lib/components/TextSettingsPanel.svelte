@@ -7,11 +7,10 @@
     setItemX,
     setItemY,
     updateText,
-    duplicateSelectedItem,
-    deleteSelectedItem,
-    setItemRotation,
   } from "../stores/documentStore.svelte.ts";
   import { displayValue, parseInputToMm, formatDisplay } from "../utils/units.ts";
+  import SelectionActions from "./SelectionActions.svelte";
+  import RotationControl from "./RotationControl.svelte";
 
   let { item }: { item: TextItem } = $props();
   let x = $state("");
@@ -34,7 +33,7 @@
 <div class="space-y-5">
   <div class="pb-3 border-b border-base-300">
     <h3 class="font-semibold text-sm">{item.name}</h3>
-    <p class="text-xs text-base-content/50">Text properties</p>
+    <p class="text-xs text-base-content/65">Text properties</p>
   </div>
 
   <div>
@@ -49,10 +48,10 @@
     <label class="form-control"><span class="label text-xs">Height ({doc.unit})</span><input class="input input-bordered input-sm" type="number" bind:value={height} onchange={() => mm(height) > 0 && setItemHeight(item.id, mm(height))} /></label>
   </div>
 
-  <label class="form-control"><span class="label text-xs">Rotation (degrees)</span><input class="input input-bordered input-sm" type="number" step="1" value={item.rotationDeg} onchange={(e) => setItemRotation(item.id, Number(e.currentTarget.value))} /></label>
+  <RotationControl id={item.id} rotationDeg={item.rotationDeg} />
 
   <div class="grid grid-cols-2 gap-2">
-    <label class="form-control"><span class="label text-xs">Font size ({doc.unit})</span><input class="input input-bordered input-sm" type="number" min="1" step="0.5" value={displayValue(item.fontSizeMm, doc.unit)} onchange={(e) => updateText(item.id, { fontSizeMm: Math.max(1, parseInputToMm(Number(e.currentTarget.value), doc.unit)) })} /></label>
+    <label class="form-control"><span class="label text-xs">Font size ({doc.unit})</span><input class="input input-bordered input-sm" type="number" min={doc.unit === "cm" ? "0.1" : "1"} step={doc.unit === "cm" ? "0.1" : "0.5"} value={displayValue(item.fontSizeMm, doc.unit)} onchange={(e) => updateText(item.id, { fontSizeMm: Math.max(1, parseInputToMm(Number(e.currentTarget.value), doc.unit)) })} /></label>
     <label class="form-control"><span class="label text-xs">Weight</span><select class="select select-bordered select-sm" value={item.fontWeight} onchange={(e) => updateText(item.id, { fontWeight: e.currentTarget.value as TextItem["fontWeight"] })}><option value="400">Regular</option><option value="600">Semibold</option><option value="700">Bold</option></select></label>
   </div>
 
@@ -63,8 +62,5 @@
     <label class="form-control flex-1"><span class="label text-xs">Align</span><select class="select select-bordered select-sm" value={item.textAlign} onchange={(e) => updateText(item.id, { textAlign: e.currentTarget.value as TextItem["textAlign"] })}><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select></label>
   </div>
 
-  <div class="grid grid-cols-2 gap-2 pt-3 border-t border-base-300">
-    <button class="btn btn-sm btn-outline" onclick={duplicateSelectedItem}>Duplicate</button>
-    <button class="btn btn-sm btn-error btn-outline" onclick={deleteSelectedItem}>Delete</button>
-  </div>
+  <SelectionActions />
 </div>

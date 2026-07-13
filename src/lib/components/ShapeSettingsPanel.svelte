@@ -11,11 +11,10 @@
     setShapeStroke,
     setShapeStrokeWidth,
     setShapeCornerRadius,
-    deleteSelectedItem,
-    duplicateSelectedItem,
-    setItemRotation,
   } from "../stores/documentStore.svelte.ts";
   import { displayValue, formatDisplay, parseInputToMm } from "../utils/units.ts";
+  import SelectionActions from "./SelectionActions.svelte";
+  import RotationControl from "./RotationControl.svelte";
 
   let { item }: { item: ShapeItem } = $props();
 
@@ -52,12 +51,12 @@
 <div class="space-y-5">
   <div class="pb-3 border-b border-base-300">
     <h3 class="font-semibold text-base-content text-sm truncate" title={item.name}>{item.name}</h3>
-    <p class="text-xs text-base-content/50 mt-0.5 capitalize">{item.shapeType}</p>
+    <p class="text-xs text-base-content/65 mt-0.5 capitalize">{item.shapeType}</p>
   </div>
 
   <!-- Position -->
   <div>
-    <h4 class="text-xs font-medium text-base-content/50 uppercase tracking-wide mb-2">Position</h4>
+    <h4 class="text-xs font-medium text-base-content/65 uppercase tracking-wide mb-2">Position</h4>
     <div class="grid grid-cols-2 gap-2">
       <div>
         <label class="block text-xs text-base-content/60 mb-1" for={`shp-x-${item.id}`}>X ({doc.unit})</label>
@@ -86,7 +85,7 @@
 
   <!-- Size -->
   <div>
-    <h4 class="text-xs font-medium text-base-content/50 uppercase tracking-wide mb-2">Size</h4>
+    <h4 class="text-xs font-medium text-base-content/65 uppercase tracking-wide mb-2">Size</h4>
     <div class="grid grid-cols-2 gap-2 mb-2">
       <div>
         <label class="block text-xs text-base-content/60 mb-1" for={`shp-w-${item.id}`}>Width ({doc.unit})</label>
@@ -124,27 +123,25 @@
     </label>
   </div>
 
-  <label class="form-control">
-    <span class="label text-xs">Rotation (degrees)</span>
-    <input class="input input-bordered input-sm w-full" type="number" step="1" value={item.rotationDeg} onchange={(e) => setItemRotation(item.id, Number(e.currentTarget.value))} />
-  </label>
+  <RotationControl id={item.id} rotationDeg={item.rotationDeg} />
 
   <!-- Appearance -->
   {#if item.shapeType !== "line"}
     <div>
-      <h4 class="text-xs font-medium text-base-content/50 uppercase tracking-wide mb-2">Fill</h4>
+      <h4 class="text-xs font-medium text-base-content/65 uppercase tracking-wide mb-2">Fill</h4>
       <input
         type="color"
         class="w-10 h-8 rounded cursor-pointer"
         value={item.fill}
         onchange={(e) => setShapeFill(item.id, (e.target as HTMLInputElement).value)}
         title="Fill color"
+        aria-label="Fill color"
       />
     </div>
   {/if}
 
   <div>
-    <h4 class="text-xs font-medium text-base-content/50 uppercase tracking-wide mb-2">Stroke</h4>
+    <h4 class="text-xs font-medium text-base-content/65 uppercase tracking-wide mb-2">Stroke</h4>
     <div class="flex items-center gap-2">
       <input
         type="color"
@@ -152,6 +149,7 @@
         value={item.stroke}
         onchange={(e) => setShapeStroke(item.id, (e.target as HTMLInputElement).value)}
         title="Stroke color"
+        aria-label="Stroke color"
       />
       <div class="flex-1">
         <label class="block text-xs text-base-content/60 mb-1" for={`shp-sw-${item.id}`}>Width ({doc.unit})</label>
@@ -169,7 +167,7 @@
 
   {#if item.shapeType === "rect"}
     <div>
-      <h4 class="text-xs font-medium text-base-content/50 uppercase tracking-wide mb-2">Corner Radius</h4>
+      <h4 class="text-xs font-medium text-base-content/65 uppercase tracking-wide mb-2">Corner Radius</h4>
       <input
         id={`shp-cr-${item.id}`}
         type="number"
@@ -181,12 +179,5 @@
     </div>
   {/if}
 
-  <!-- Actions -->
-  <div class="pt-3 border-t border-base-300">
-    <h4 class="text-xs font-medium text-base-content/50 uppercase tracking-wide mb-2">Actions</h4>
-    <div class="grid grid-cols-2 gap-2">
-      <button class="btn btn-sm btn-outline" onclick={duplicateSelectedItem}>Duplicate</button>
-      <button class="btn btn-sm btn-error btn-outline" onclick={deleteSelectedItem}>Delete</button>
-    </div>
-  </div>
+  <SelectionActions />
 </div>

@@ -4,7 +4,7 @@ A browser-based layout tool for placing images on printable pages at exact physi
 
 ## Features
 
-- Import PNG, JPG, JPEG, WEBP images
+- Import PNG, JPG, JPEG, WEBP, and SVG images
 - Place images on A4, A5, A6, or Letter page templates (or custom sizes)
 - Resize images to exact physical dimensions in mm or cm
 - Lock/unlock aspect ratio when resizing
@@ -14,6 +14,7 @@ A browser-based layout tool for placing images on printable pages at exact physi
 - Shift-select and move, duplicate, or delete multiple items together
 - Layers panel with stacking controls
 - Configurable grid, snap-to-grid, and center guides
+- Fit the full page into the workspace and center selected items precisely on the page
 - Drag to move items on the page
 - Visual resize handles (corners and edges)
 - Undo/redo history
@@ -70,7 +71,8 @@ When you type values in the sidebar, you can switch between mm and cm display. I
 6. **Lock aspect ratio**: Toggle the checkbox in the properties panel to preserve proportions.
 7. **Crop**: Click "Crop Image" and trim visually or enter the amount removed from each edge.
 8. **Arrange**: Shift-click items or layers for multi-selection; use the layer arrows or context menu for stacking.
-9. **Export/Print**: Click "SVG" for a self-contained layered vector file, or choose 300, 600, or 1200 DPI and click "PNG" for a raster file. PNG defaults to 600 DPI.
+9. **Align**: Use "Center X" or "Center Y" in the inspector to center one item or an entire selection while preserving its internal layout.
+10. **Export/Print**: Click "SVG" for a self-contained layered vector file, or choose an available DPI and click "PNG" for a raster file. PNG defaults to 600 DPI.
 
 ## Keyboard Shortcuts
 
@@ -131,6 +133,7 @@ src/
 - Multi-selection supports group movement, nudging, duplication, and deletion, but not marquee selection or group resizing.
 - Text uses a small browser-safe font list; custom font embedding is not available.
 - Browser storage quotas still apply to local saves containing large embedded images. JSON export is the durable backup path, and quota failures are reported in the UI.
+- PNG resolutions that would require an unsafe browser canvas allocation are disabled for the current page size; use a lower DPI or a smaller page.
 - Print margins and scaling must remain disabled in the browser print dialog; TrimKit supplies the exact CSS page size.
 
 ## License

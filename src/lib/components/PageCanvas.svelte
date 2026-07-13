@@ -42,7 +42,7 @@
     {/each}
   </div>
 
-  <div class="no-print absolute bottom-0 left-1/2 -translate-x-1/2 text-xs text-base-content/50 whitespace-nowrap font-medium">
+  <div class="no-print absolute bottom-0 left-1/2 -translate-x-1/2 text-xs text-base-content/65 whitespace-nowrap font-medium">
     {doc.page.name} — {doc.page.widthMm.toFixed(1)} × {doc.page.heightMm.toFixed(1)} mm
   </div>
 </div>

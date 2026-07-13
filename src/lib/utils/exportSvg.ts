@@ -48,24 +48,10 @@ function escapeXml(value: string): string {
 }
 
 function renderTextToSvg(item: TextItem): string {
-  const anchor = item.textAlign === "center" ? "middle" : item.textAlign === "right" ? "end" : "start";
-  const x = item.textAlign === "center"
-    ? item.xMm + item.widthMm / 2
-    : item.textAlign === "right" ? item.xMm + item.widthMm : item.xMm;
-  const lines = item.text.split("\n");
-  const tspans = lines.map((line, index) =>
-    `<tspan x="${x}" dy="${index === 0 ? 0 : item.fontSizeMm * 1.2}">${escapeXml(line)}</tspan>`,
-  ).join("");
   return `
-  <text
-    x="${x}"
-    y="${item.yMm + item.fontSizeMm}"
-    fill="${item.color}"
-    font-family="${escapeXml(item.fontFamily)}"
-    font-size="${item.fontSizeMm}"
-    font-weight="${item.fontWeight}"
-    text-anchor="${anchor}"
-  >${tspans}</text>`;
+  <foreignObject x="${item.xMm}" y="${item.yMm}" width="${item.widthMm}" height="${item.heightMm}">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;box-sizing:border-box;overflow:hidden;white-space:pre-wrap;overflow-wrap:anywhere;font-family:${escapeXml(item.fontFamily)};font-size:${item.fontSizeMm}px;font-weight:${item.fontWeight};line-height:1.2;text-align:${item.textAlign};color:${item.color};">${escapeXml(item.text)}</div>
+  </foreignObject>`;
 }
 
 function renderImageToSvg(item: ImageItem, index: number): string {

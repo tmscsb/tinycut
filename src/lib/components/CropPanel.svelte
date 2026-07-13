@@ -43,7 +43,7 @@
 </script>
 
 <div class="space-y-3">
-  <h4 class="text-xs font-medium text-base-content/50 uppercase tracking-wide">Trim from edge (%)</h4>
+  <h4 class="text-xs font-medium text-base-content/65 uppercase tracking-wide">Trim from edge (%)</h4>
 
   <div class="grid grid-cols-2 gap-2">
     <div>

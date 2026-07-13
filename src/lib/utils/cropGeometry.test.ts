@@ -186,4 +186,6 @@ test("SVG export preserves rotation and escapes text", () => {
   const svg = exportDocumentAsSvg(state);
   assert.match(svg, /transform="rotate\(45 30 25\)"/);
   assert.match(svg, /A &lt; B &amp; C/);
+  assert.match(svg, /<foreignObject x="10" y="20" width="40" height="10">/);
+  assert.match(svg, /overflow:hidden;white-space:pre-wrap;overflow-wrap:anywhere/);
 });

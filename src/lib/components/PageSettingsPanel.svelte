@@ -1,6 +1,7 @@
 <script lang="ts">
   import { doc, requestNewDocument, setPageSize, setGridSettings } from "../stores/documentStore.svelte.ts";
   import { PAGE_TEMPLATES } from "../types/document.ts";
+  import { showNotice } from "../stores/uiStore.svelte.ts";
 
   let customW = $state(String(doc.page.widthMm));
   let customH = $state(String(doc.page.heightMm));
@@ -13,7 +14,11 @@
   function applyCustom() {
     const w = parseFloat(customW);
     const h = parseFloat(customH);
-    if (w > 0 && h > 0) setPageSize(w, h);
+    if (w >= 10 && h >= 10) {
+      setPageSize(w, h);
+    } else {
+      showNotice("Page width and height must be at least 10 mm", "error");
+    }
   }
 </script>
 
@@ -21,18 +26,24 @@
   <!-- Header -->
   <div class="pb-3 border-b border-base-300">
     <h3 class="font-semibold text-base-content text-sm">Page Settings</h3>
-    <p class="text-xs text-base-content/50 mt-0.5">Configure your document</p>
+    <p class="text-xs text-base-content/65 mt-0.5">Configure your document</p>
   </div>
 
   <!-- Template -->
   <div>
-    <h4 class="text-xs font-medium text-base-content/50 uppercase tracking-wide mb-2">Template</h4>
+    <h4 class="text-xs font-medium text-base-content/65 uppercase tracking-wide mb-2">Template</h4>
     <select
       id="template-select"
       class="select select-bordered select-sm w-full"
       value={doc.page.templateId}
-      onchange={(e) => requestNewDocument((e.target as HTMLSelectElement).value)}
+      onchange={(e) => {
+        const select = e.currentTarget;
+        const templateId = select.value;
+        select.value = doc.page.templateId;
+        requestNewDocument(templateId);
+      }}
     >
+      {#if doc.page.templateId === "custom"}<option value="custom" disabled>Custom</option>{/if}
       {#each PAGE_TEMPLATES as tpl}
         <option value={tpl.id}>{tpl.name}</option>
       {/each}
@@ -49,7 +60,7 @@
 
   <!-- Custom Size -->
   <div class="pt-3 border-t border-base-300">
-    <h4 class="text-xs font-medium text-base-content/50 uppercase tracking-wide mb-2">Custom Size (mm)</h4>
+    <h4 class="text-xs font-medium text-base-content/65 uppercase tracking-wide mb-2">Custom Size (mm)</h4>
     <div class="flex gap-2 mb-2">
       <div class="flex-1">
         <label class="block text-xs text-base-content/60 mb-1" for="custom-width">Width</label>
@@ -83,7 +94,7 @@
   </div>
 
   <div class="pt-3 border-t border-base-300">
-    <h4 class="text-xs font-medium text-base-content/50 uppercase tracking-wide mb-2">Grid &amp; guides</h4>
+    <h4 class="text-xs font-medium text-base-content/65 uppercase tracking-wide mb-2">Grid &amp; guides</h4>
     <label class="form-control mb-2">
       <span class="label text-xs">Grid size (mm)</span>
       <input class="input input-bordered input-sm" type="number" min="1" step="1" value={doc.gridSizeMm} onchange={(e) => setGridSettings({ gridSizeMm: Number(e.currentTarget.value) })} />

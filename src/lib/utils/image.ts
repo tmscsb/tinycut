@@ -22,6 +22,10 @@ export async function loadImageFile(file: File): Promise<{
     img.onerror = () => reject(new Error("Failed to load image"));
   });
 
+  if (img.naturalWidth <= 0 || img.naturalHeight <= 0) {
+    throw new Error("Image dimensions are invalid");
+  }
+
   return {
     src,
     naturalWidthPx: img.naturalWidth,

@@ -7,6 +7,9 @@ export const ui = $state({
   theme: "light" as Theme,
   contextMenu: null as { x: number; y: number; itemId: string } | null,
   notice: null as { message: string; type: "success" | "error" | "info" } | null,
+  fitPageRequest: 0,
+  mobilePanelOpen: false,
+  compactLayout: false,
 });
 
 let noticeTimer: ReturnType<typeof setTimeout> | undefined;
@@ -59,6 +62,23 @@ export function showContextMenu(x: number, y: number, itemId: string): void {
 
 export function hideContextMenu(): void {
   ui.contextMenu = null;
+}
+
+export function requestFitPage(): void {
+  ui.fitPageRequest += 1;
+}
+
+export function openMobilePanel(): void {
+  ui.mobilePanelOpen = true;
+}
+
+export function closeMobilePanel(): void {
+  ui.mobilePanelOpen = false;
+}
+
+export function setCompactLayout(compact: boolean): void {
+  ui.compactLayout = compact;
+  if (!compact) ui.mobilePanelOpen = false;
 }
 
 export function confirmAction(action: () => void): void {

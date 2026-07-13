@@ -1,9 +1,10 @@
 <script lang="ts">
   import type { TextItem } from "../types/document.ts";
-  import { doc, resizeItem, beginUndo, snapValue } from "../stores/documentStore.svelte.ts";
+  import { doc, resizeItem, beginUndo, endUndo } from "../stores/documentStore.svelte.ts";
   import { mmToPx, pxToMm } from "../utils/units.ts";
   import { MIN_SIZE_MM } from "../types/document.ts";
   import ResizeHandles from "./ResizeHandles.svelte";
+  import { resizeFrameFromScreenDelta, type ResizeHandle } from "../utils/resizeGeometry.ts";
 
   let { item, zIndex }: { item: TextItem; zIndex: number } = $props();
 
@@ -16,37 +17,46 @@
   const fontSizePx = $derived(mmToPx(item.fontSizeMm, doc.zoom));
 
   let resizing = $state(false);
-  let resizeHandle = $state("");
+  let resizeHandle = $state<ResizeHandle>("se");
   let resizeStartPx = $state({ x: 0, y: 0 });
-  let resizeStartDim = $state({ x: 0, y: 0, w: 0, h: 0 });
+  let resizeStartDim = $state({ xMm: 0, yMm: 0, widthMm: 0, heightMm: 0 });
 
-  function handleResizeStart(e: PointerEvent, handle: string) {
+  function handleResizeStart(e: PointerEvent, handle: ResizeHandle) {
     e.stopPropagation();
     e.preventDefault();
     beginUndo();
     resizing = true;
     resizeHandle = handle;
     resizeStartPx = { x: e.clientX, y: e.clientY };
-    resizeStartDim = { x: item.xMm, y: item.yMm, w: item.widthMm, h: item.heightMm };
+    resizeStartDim = { xMm: item.xMm, yMm: item.yMm, widthMm: item.widthMm, heightMm: item.heightMm };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   }
 
   function handleResizeMove(e: PointerEvent) {
     if (!resizing) return;
-    const dx = pxToMm(e.clientX - resizeStartPx.x, doc.zoom);
-    const dy = pxToMm(e.clientY - resizeStartPx.y, doc.zoom);
-    const { x, y, w, h } = resizeStartDim;
-    let width = resizeHandle.includes("e") ? w + dx : resizeHandle.includes("w") ? w - dx : w;
-    let height = resizeHandle.includes("s") ? h + dy : resizeHandle.includes("n") ? h - dy : h;
-    width = Math.max(MIN_SIZE_MM, snapValue(width));
-    height = Math.max(MIN_SIZE_MM, snapValue(height));
-    const nextX = resizeHandle.includes("w") ? x + w - width : x;
-    const nextY = resizeHandle.includes("n") ? y + h - height : y;
-    resizeItem(item.id, nextX, nextY, width, height);
+    const next = resizeFrameFromScreenDelta(
+      resizeStartDim,
+      resizeHandle,
+      pxToMm(e.clientX - resizeStartPx.x, doc.zoom),
+      pxToMm(e.clientY - resizeStartPx.y, doc.zoom),
+      {
+        lockedAspectRatio: false,
+        minSizeMm: MIN_SIZE_MM,
+        rotationDeg: item.rotationDeg,
+        snapStepMm: doc.snapToGrid ? doc.gridSizeMm : undefined,
+      },
+    );
+    resizeItem(item.id, next.xMm, next.yMm, next.widthMm, next.heightMm);
   }
 
-  function handleResizeEnd() {
+  function handleResizeEnd(e: PointerEvent) {
     resizing = false;
+    endUndo();
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {
+      // already released
+    }
   }
 </script>
 

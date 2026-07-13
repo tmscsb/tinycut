@@ -17,16 +17,39 @@
     exitCropMode,
   } from "../stores/documentStore.svelte.ts";
   import { ZOOM_LEVELS, PAGE_TEMPLATES } from "../types/document.ts";
-  import { exportDocumentAsPng } from "../utils/exportPng.ts";
-  import { ui, toggleTheme, showShortcuts, showNotice } from "../stores/uiStore.svelte.ts";
+  import { exportDocumentAsPng, getPngExportDimensions } from "../utils/exportPng.ts";
+  import { exportDocumentAsSvg } from "../utils/exportSvg.ts";
+  import { ui, requestFitPage, toggleTheme, showShortcuts, showNotice } from "../stores/uiStore.svelte.ts";
 
   let fileInput: HTMLInputElement | undefined = $state();
   let importInput: HTMLInputElement | undefined = $state();
   let exportingPng = $state(false);
   let pngDpi = $state(600);
+  const dpiOptions = [300, 600, 1200];
+  const pngDimensions = $derived(getPngExportDimensions(doc.page, pngDpi));
+  const zoomOptions = $derived(
+    [...new Set([0.1, 0.2, ...ZOOM_LEVELS, 3, 4, doc.zoom])].sort((a, b) => a - b),
+  );
 
   const isMac = typeof navigator !== "undefined" && navigator.platform.includes("Mac");
   const modKey = isMac ? "⌘" : "Ctrl";
+
+  $effect(() => {
+    if (pngDimensions.supported) return;
+    const fallback = [...dpiOptions]
+      .reverse()
+      .find((dpi) => getPngExportDimensions(doc.page, dpi).supported);
+    if (fallback) pngDpi = fallback;
+  });
+
+  function downloadBlob(blob: Blob, filename: string) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
 
   function handleImageFile(e: Event) {
     const target = e.target as HTMLInputElement;
@@ -52,15 +75,15 @@
 
   async function handleExportPng() {
     if (exportingPng) return;
+    if (!pngDimensions.supported) {
+      showNotice("Choose a lower DPI for this page size", "error");
+      return;
+    }
     exportingPng = true;
     try {
       const blob = await exportDocumentAsPng(doc, pngDpi);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "trimkit-export.png";
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 0);
+      downloadBlob(blob, "trimkit-export.png");
+      showNotice(`PNG exported at ${pngDpi} DPI`, "success");
     } catch {
       showNotice("The PNG export could not be created", "error");
     } finally {
@@ -70,13 +93,14 @@
 
   function handleExportJson() {
     const json = exportJson();
-    const blob = new Blob([json], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "trimkit-project.json";
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(new Blob([json], { type: "application/json" }), "trimkit-project.json");
+    showNotice("Project JSON exported", "success");
+  }
+
+  function handleExportSvg() {
+    const svg = exportDocumentAsSvg(doc);
+    downloadBlob(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }), "trimkit-export.svg");
+    showNotice("SVG exported", "success");
   }
 
   function handlePrint() {
@@ -101,18 +125,20 @@
       onclick={undo}
       disabled={!undoState.hasUndo}
       title="Undo"
+      aria-label="Undo"
     >
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
-      <kbd class="kbd kbd-xs ml-0.5 hidden xl:inline-flex">{modKey}Z</kbd>
+      <span class="shortcut-hint hidden xl:inline-flex"><kbd class="kbd kbd-xs">{modKey}</kbd><span>+</span><kbd class="kbd kbd-xs">Z</kbd></span>
     </button>
     <button
       class="join-item btn btn-sm btn-ghost"
       onclick={redo}
       disabled={!undoState.hasRedo}
       title="Redo"
+      aria-label="Redo"
     >
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-      <kbd class="kbd kbd-xs ml-0.5 hidden xl:inline-flex">{modKey}Y</kbd>
+      <span class="shortcut-hint hidden xl:inline-flex"><kbd class="kbd kbd-xs">{modKey}</kbd><span>+</span><kbd class="kbd kbd-xs">Y</kbd></span>
     </button>
   </div>
 
@@ -126,15 +152,21 @@
       title="New A4 document"
     >
       New
-      <kbd class="kbd kbd-xs hidden xl:inline-flex">{modKey}N</kbd>
+      <span class="shortcut-hint hidden xl:inline-flex"><kbd class="kbd kbd-xs">{modKey}</kbd><span>+</span><kbd class="kbd kbd-xs">N</kbd></span>
     </button>
 
     <select
       class="select select-sm select-bordered"
       value={doc.page.templateId}
-      onchange={(e) => requestNewDocument((e.target as HTMLSelectElement).value)}
+      onchange={(e) => {
+        const select = e.currentTarget;
+        const templateId = select.value;
+        select.value = doc.page.templateId;
+        requestNewDocument(templateId);
+      }}
       title="Page template"
     >
+      {#if doc.page.templateId === "custom"}<option value="custom" disabled>Custom</option>{/if}
       {#each PAGE_TEMPLATES as tpl}
         <option value={tpl.id}>{tpl.name}</option>
       {/each}
@@ -206,7 +238,7 @@
       title="Zoom out"
     >
       −
-      <kbd class="kbd kbd-xs ml-1 hidden xl:inline-flex">{modKey}-</kbd>
+      <span class="shortcut-hint hidden xl:inline-flex"><kbd class="kbd kbd-xs">{modKey}</kbd><span>+</span><kbd class="kbd kbd-xs">−</kbd></span>
     </button>
 
     <select
@@ -215,7 +247,7 @@
       onchange={(e) => setZoom(Number((e.target as HTMLSelectElement).value))}
       title="Zoom level"
     >
-      {#each [...ZOOM_LEVELS, 0.1, 0.2, 3, 4] as z}
+      {#each zoomOptions as z}
         <option value={z}>{Math.round(z * 100)}%</option>
       {/each}
     </select>
@@ -226,9 +258,17 @@
       title="Zoom in"
     >
       +
-      <kbd class="kbd kbd-xs ml-1 hidden xl:inline-flex">{modKey}+</kbd>
+      <span class="shortcut-hint hidden xl:inline-flex"><kbd class="kbd kbd-xs">{modKey}</kbd><span>+</span><kbd class="kbd kbd-xs">+</kbd></span>
     </button>
   </div>
+
+  <button
+    class="btn btn-sm btn-ghost"
+    onclick={requestFitPage}
+    title="Fit page in workspace"
+  >
+    Fit
+  </button>
 
   <button
     class="btn btn-sm btn-ghost hidden xl:inline-flex"
@@ -236,14 +276,17 @@
     title="Reset zoom"
   >
     100%
-    <kbd class="kbd kbd-xs ml-1 hidden xl:inline-flex">{modKey}0</kbd>
+    <span class="shortcut-hint hidden xl:inline-flex"><kbd class="kbd kbd-xs">{modKey}</kbd><span>+</span><kbd class="kbd kbd-xs">0</kbd></span>
   </button>
 
   <div class="divider divider-horizontal mx-0 hidden xl:flex"></div>
 
   <!-- Export & Print -->
   <div class="join">
-    <button class="join-item btn btn-sm btn-ghost" onclick={handleExportPng} disabled={exportingPng} title={`Export as PNG at ${pngDpi} DPI`}>
+    <button class="join-item btn btn-sm btn-ghost" onclick={handleExportSvg} title="Export as layered SVG">
+      SVG
+    </button>
+    <button class="join-item btn btn-sm btn-ghost" onclick={handleExportPng} disabled={exportingPng || !pngDimensions.supported} title={`Export ${pngDimensions.widthPx} × ${pngDimensions.heightPx} PNG at ${pngDpi} DPI`}>
       {exportingPng ? "Exporting…" : "PNG"}
     </button>
     <select
@@ -253,9 +296,9 @@
       title="PNG export resolution"
       aria-label="PNG export resolution"
     >
-      <option value={300}>300 DPI</option>
-      <option value={600}>600 DPI</option>
-      <option value={1200}>1200 DPI</option>
+      {#each dpiOptions as dpi}
+        <option value={dpi} disabled={!getPngExportDimensions(doc.page, dpi).supported}>{dpi} DPI</option>
+      {/each}
     </select>
   </div>
   <button class="btn btn-sm btn-ghost" onclick={handlePrint} title="Print">
@@ -272,7 +315,7 @@
       <span aria-hidden="true">▾</span>
     </button>
     <ul class="dropdown-content menu bg-base-100 rounded-box z-50 w-52 p-2 shadow-xl border border-base-300">
-      <li><button onclick={() => saveToLocalStorage()}>Save to browser <kbd class="kbd kbd-xs ml-auto">{modKey}S</kbd></button></li>
+      <li><button onclick={() => saveToLocalStorage()}>Save to browser <span class="ml-auto inline-flex items-center gap-1"><kbd class="kbd kbd-xs">{modKey}</kbd><span>+</span><kbd class="kbd kbd-xs">S</kbd></span></button></li>
       <li><button onclick={requestLoadFromLocalStorage}>Load saved project</button></li>
       <li><button onclick={handleExportJson}>Export project JSON</button></li>
       <li><button onclick={() => importInput?.click()}>Import project JSON</button></li>
@@ -287,6 +330,7 @@
     class="btn btn-sm btn-ghost btn-circle"
     onclick={toggleTheme}
     title="Toggle dark/light theme"
+    aria-label="Toggle dark/light theme"
   >
     {#if ui.theme === "dark"}
       <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
@@ -299,6 +343,7 @@
     class="btn btn-sm btn-ghost btn-circle"
     onclick={showShortcuts}
     title="Keyboard shortcuts"
+    aria-label="Keyboard shortcuts"
   >
     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
   </button>

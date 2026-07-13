@@ -1,11 +1,12 @@
 <script lang="ts">
   import type { ImageItem } from "../types/document.ts";
-  import { doc, resizeItem, beginUndo, snapValue } from "../stores/documentStore.svelte.ts";
+  import { doc, resizeItem, beginUndo, endUndo } from "../stores/documentStore.svelte.ts";
   import { mmToPx, pxToMm } from "../utils/units.ts";
   import { MIN_SIZE_MM } from "../types/document.ts";
   import ResizeHandles from "./ResizeHandles.svelte";
   import CropHandles from "./CropHandles.svelte";
   import { getImageCropTransformOrigin, getImageSourceFrame } from "../utils/cropGeometry.ts";
+  import { resizeFrameFromScreenDelta, type ResizeHandle } from "../utils/resizeGeometry.ts";
 
   let { item, zIndex }: { item: ImageItem; zIndex: number } = $props();
 
@@ -38,18 +39,18 @@
   );
 
   let resizing = $state(false);
-  let resizeHandle = $state("");
+  let resizeHandle = $state<ResizeHandle>("se");
   let resizeStartPx = $state({ x: 0, y: 0 });
-  let resizeStartDim = $state({ x: 0, y: 0, w: 0, h: 0 });
+  let resizeStartDim = $state({ xMm: 0, yMm: 0, widthMm: 0, heightMm: 0 });
 
-  function handleResizeStart(e: PointerEvent, handle: string) {
+  function handleResizeStart(e: PointerEvent, handle: ResizeHandle) {
     e.stopPropagation();
     e.preventDefault();
     beginUndo();
     resizing = true;
     resizeHandle = handle;
     resizeStartPx = { x: e.clientX, y: e.clientY };
-    resizeStartDim = { x: item.xMm, y: item.yMm, w: item.widthMm, h: item.heightMm };
+    resizeStartDim = { xMm: item.xMm, yMm: item.yMm, widthMm: item.widthMm, heightMm: item.heightMm };
 
     const el = e.currentTarget as HTMLElement;
     el.setPointerCapture(e.pointerId);
@@ -58,60 +59,24 @@
   function handleResizeMove(e: PointerEvent) {
     if (!resizing) return;
 
-    const dx = pxToMm(e.clientX - resizeStartPx.x, doc.zoom);
-    const dy = pxToMm(e.clientY - resizeStartPx.y, doc.zoom);
-    const handle = resizeHandle;
-    const { x: sx, y: sy, w: sw, h: sh } = resizeStartDim;
-
-    let newW = sw;
-    let newH = sh;
-
-    if (handle.includes("e")) newW = sw + dx;
-    if (handle.includes("w")) newW = sw - dx;
-    if (handle.includes("s")) newH = sh + dy;
-    if (handle.includes("n")) newH = sh - dy;
-
-    if (item.lockedAspectRatio) {
-      const aspect = sw / sh || 1;
-
-      const isHorizontal = handle === "e" || handle === "w";
-      const isVertical = handle === "n" || handle === "s";
-
-      if (isHorizontal) {
-        newW = Math.max(MIN_SIZE_MM, newW);
-        newH = newW / aspect;
-      } else if (isVertical) {
-        newH = Math.max(MIN_SIZE_MM, newH);
-        newW = newH * aspect;
-      } else {
-        if (Math.abs(dx) >= Math.abs(dy)) {
-          newW = Math.max(MIN_SIZE_MM, newW);
-          newH = newW / aspect;
-        } else {
-          newH = Math.max(MIN_SIZE_MM, newH);
-          newW = newH * aspect;
-        }
-      }
-    } else {
-      newW = Math.max(MIN_SIZE_MM, newW);
-      newH = Math.max(MIN_SIZE_MM, newH);
-    }
-
-    if (!item.lockedAspectRatio) {
-      newW = Math.max(MIN_SIZE_MM, snapValue(newW));
-      newH = Math.max(MIN_SIZE_MM, snapValue(newH));
-    }
-
-    let newX = sx;
-    let newY = sy;
-    if (handle.includes("w")) newX = sx + sw - newW;
-    if (handle.includes("n")) newY = sy + sh - newH;
-
-    resizeItem(item.id, newX, newY, newW, newH);
+    const next = resizeFrameFromScreenDelta(
+      resizeStartDim,
+      resizeHandle,
+      pxToMm(e.clientX - resizeStartPx.x, doc.zoom),
+      pxToMm(e.clientY - resizeStartPx.y, doc.zoom),
+      {
+        lockedAspectRatio: item.lockedAspectRatio,
+        minSizeMm: MIN_SIZE_MM,
+        rotationDeg: item.rotationDeg,
+        snapStepMm: doc.snapToGrid ? doc.gridSizeMm : undefined,
+      },
+    );
+    resizeItem(item.id, next.xMm, next.yMm, next.widthMm, next.heightMm);
   }
 
   function handleResizeEnd(e: PointerEvent) {
     resizing = false;
+    endUndo();
     try {
       (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
     } catch {
@@ -148,7 +113,7 @@
     </svg>
 
     {#if selected && !cropMode}
-      <div class="absolute inset-0 border border-primary pointer-events-none"></div>
+      <div class="no-print absolute inset-0 border border-primary pointer-events-none"></div>
     {/if}
   </div>
 

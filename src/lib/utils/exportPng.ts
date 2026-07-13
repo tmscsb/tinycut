@@ -1,14 +1,35 @@
-import type { DocumentState } from "../types/document.ts";
+import type { DocumentState, Page } from "../types/document.ts";
 import { exportDocumentAsSvg } from "./exportSvg.ts";
 
 export const PNG_EXPORT_DPI = 600;
+export const MAX_PNG_EXPORT_PIXELS = 100_000_000;
+export const MAX_PNG_EXPORT_DIMENSION = 32_767;
+
+export function getPngExportDimensions(page: Pick<Page, "widthMm" | "heightMm">, dpi: number) {
+  const widthPx = Math.max(1, Math.round(page.widthMm * dpi / 25.4));
+  const heightPx = Math.max(1, Math.round(page.heightMm * dpi / 25.4));
+  return {
+    widthPx,
+    heightPx,
+    pixelCount: widthPx * heightPx,
+    supported:
+      Number.isFinite(dpi) &&
+      dpi > 0 &&
+      widthPx <= MAX_PNG_EXPORT_DIMENSION &&
+      heightPx <= MAX_PNG_EXPORT_DIMENSION &&
+      widthPx * heightPx <= MAX_PNG_EXPORT_PIXELS,
+  };
+}
 
 export async function exportDocumentAsPng(
   state: DocumentState,
   dpi = PNG_EXPORT_DPI,
 ): Promise<Blob> {
-  const widthPx = Math.max(1, Math.round(state.page.widthMm * dpi / 25.4));
-  const heightPx = Math.max(1, Math.round(state.page.heightMm * dpi / 25.4));
+  const dimensions = getPngExportDimensions(state.page, dpi);
+  if (!dimensions.supported) {
+    throw new Error("The requested PNG is too large for a reliable browser export");
+  }
+  const { widthPx, heightPx } = dimensions;
   const svgBlob = new Blob([exportDocumentAsSvg(state)], { type: "image/svg+xml;charset=utf-8" });
   const svgUrl = URL.createObjectURL(svgBlob);
 

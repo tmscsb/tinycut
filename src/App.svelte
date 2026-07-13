@@ -25,15 +25,42 @@
     ui,
     initTheme,
     showShortcuts,
+    hideShortcuts,
     hideContextMenu,
     executePendingAction,
     cancelPendingAction,
+    openMobilePanel,
+    closeMobilePanel,
+    setCompactLayout,
   } from "./lib/stores/uiStore.svelte.ts";
   import { onMount } from "svelte";
+  import { trapTabFocus } from "./lib/utils/focus.ts";
+
+  let unsavedDialog: HTMLDivElement | undefined = $state();
+  let unsavedCancelButton: HTMLButtonElement | undefined = $state();
+
+  $effect(() => {
+    if (!ui.showUnsavedWarning) return;
+    requestAnimationFrame(() => unsavedCancelButton?.focus());
+  });
+
+  function handleUnsavedDialogKeydown(e: KeyboardEvent) {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      cancelPendingAction();
+      return;
+    }
+    trapTabFocus(e, unsavedDialog);
+  }
 
   onMount(() => {
     initTheme();
     loadFromLocalStorage(false);
+    const compactLayoutQuery = window.matchMedia("(max-width: 640px)");
+    const syncCompactLayout = () => setCompactLayout(compactLayoutQuery.matches);
+    syncCompactLayout();
+    compactLayoutQuery.addEventListener("change", syncCompactLayout);
 
     function isInputFocused(): boolean {
       const t = document.activeElement as HTMLElement;
@@ -46,6 +73,34 @@
     }
 
     function handleKeydown(e: KeyboardEvent) {
+      if (ui.showUnsavedWarning) {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          cancelPendingAction();
+        }
+        return;
+      }
+      if (ui.showShortcuts) {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          hideShortcuts();
+        }
+        return;
+      }
+      if (ui.contextMenu) {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          hideContextMenu();
+        }
+        return;
+      }
+      if (ui.compactLayout && ui.mobilePanelOpen) {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          closeMobilePanel();
+        }
+        return;
+      }
       if (isInputFocused()) return;
 
       const mod = e.ctrlKey || e.metaKey;
@@ -165,20 +220,30 @@
     return () => {
       window.removeEventListener("keydown", handleKeydown);
       window.removeEventListener("beforeunload", handleBeforeUnload);
+      compactLayoutQuery.removeEventListener("change", syncCompactLayout);
     };
   });
 </script>
 
 <div class="h-full flex flex-col bg-base-200 app-shell">
   <TopToolbar />
-  <div class="flex flex-1 overflow-hidden">
+  <div class="app-main flex flex-1 overflow-hidden">
+    <button
+      type="button"
+      class="properties-trigger no-print btn btn-sm btn-primary"
+      aria-label="Open properties panel"
+      aria-expanded={ui.mobilePanelOpen}
+      onclick={openMobilePanel}
+    >
+      Properties
+    </button>
     <Workspace />
     <PropertiesPanel />
   </div>
 </div>
 
 {#if ui.notice}
-  <div class="toast toast-top toast-center z-[200] no-print" role="status">
+  <div class="toast toast-top toast-center z-[200] no-print" role={ui.notice.type === "error" ? "alert" : "status"} aria-live={ui.notice.type === "error" ? "assertive" : "polite"}>
     <div class="alert {ui.notice.type === 'success' ? 'alert-success' : ui.notice.type === 'error' ? 'alert-error' : 'alert-info'} shadow-lg py-2 px-4">
       <span>{ui.notice.message}</span>
     </div>
@@ -200,14 +265,14 @@
 {/if}
 
 {#if ui.showUnsavedWarning}
-  <div class="modal modal-open">
+  <div class="modal modal-open" role="dialog" aria-modal="true" aria-labelledby="unsaved-title" tabindex="-1" bind:this={unsavedDialog} onkeydown={handleUnsavedDialogKeydown}>
     <div class="modal-box">
-      <h3 class="text-lg font-bold">Unsaved Changes</h3>
+      <h3 id="unsaved-title" class="text-lg font-bold">Unsaved Changes</h3>
       <p class="py-4 text-base-content/70">
         You have unsaved changes that will be lost. Are you sure you want to continue?
       </p>
       <div class="modal-action">
-        <button class="btn btn-ghost" onclick={cancelPendingAction}>Cancel</button>
+        <button class="btn btn-ghost" bind:this={unsavedCancelButton} onclick={cancelPendingAction}>Cancel</button>
         <button class="btn btn-warning" onclick={executePendingAction}>Discard &amp; Continue</button>
       </div>
     </div>

@@ -14,11 +14,14 @@ import {
 import { createId } from "../utils/ids.ts";
 import { loadImageFile } from "../utils/image.ts";
 import { confirmAction, showNotice } from "./uiStore.svelte.ts";
+import { applyCropToImageFrame } from "../utils/cropGeometry.ts";
 import {
-  applyCropToImageFrame,
-  migrateLegacyCropGeometry,
-  normalizeCrop,
-} from "../utils/cropGeometry.ts";
+  getDocumentContentSnapshot,
+  normalizeDocument,
+  normalizeRotation,
+  serializeDocument,
+} from "../utils/documentState.ts";
+import { getGroupCenteringDelta } from "../utils/resizeGeometry.ts";
 
 function defaultDoc(): DocumentState {
   const tpl = PAGE_TEMPLATES[0];
@@ -46,6 +49,8 @@ export const doc = $state<DocumentState>(defaultDoc());
 const MAX_UNDO = 50;
 let undoStack: string[] = [];
 let redoStack: string[] = [];
+let pendingUndoSnapshot: string | null = null;
+let cleanContentSnapshot = getDocumentContentSnapshot(doc);
 
 export const undoState = $state({ hasUndo: false, hasRedo: false });
 
@@ -55,14 +60,29 @@ function syncUndoFlags(): void {
 }
 
 export function beginUndo(): void {
-  pushUndo();
+  pendingUndoSnapshot = JSON.stringify(doc);
 }
 
-function pushUndo(): void {
-  undoStack.push(JSON.stringify(doc));
+export function endUndo(): void {
+  pendingUndoSnapshot = null;
+}
+
+function appendUndo(snapshot: string): void {
+  undoStack.push(snapshot);
   if (undoStack.length > MAX_UNDO) undoStack.shift();
   redoStack = [];
   syncUndoFlags();
+}
+
+function commitPendingUndo(): void {
+  if (!pendingUndoSnapshot) return;
+  appendUndo(pendingUndoSnapshot);
+  pendingUndoSnapshot = null;
+}
+
+function pushUndo(): void {
+  pendingUndoSnapshot = null;
+  appendUndo(JSON.stringify(doc));
 }
 
 export function undo(): void {
@@ -70,6 +90,8 @@ export function undo(): void {
   redoStack.push(JSON.stringify(doc));
   const snapshot = JSON.parse(undoStack.pop()!) as DocumentState;
   Object.assign(doc, snapshot);
+  pendingUndoSnapshot = null;
+  refreshDirty();
   syncUndoFlags();
 }
 
@@ -78,13 +100,24 @@ export function redo(): void {
   undoStack.push(JSON.stringify(doc));
   const snapshot = JSON.parse(redoStack.pop()!) as DocumentState;
   Object.assign(doc, snapshot);
+  pendingUndoSnapshot = null;
+  refreshDirty();
   syncUndoFlags();
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
 function markDirty(): void {
-  doc.dirty = true;
+  refreshDirty();
+}
+
+function refreshDirty(): void {
+  doc.dirty = getDocumentContentSnapshot(doc) !== cleanContentSnapshot;
+}
+
+function markClean(): void {
+  cleanContentSnapshot = getDocumentContentSnapshot(doc);
+  doc.dirty = false;
 }
 
 function getItemById(id: string): DocumentItem | undefined {
@@ -100,15 +133,29 @@ export function getSelectedItem(): DocumentItem | null {
   return getItemById(doc.selectedItemId) ?? null;
 }
 
-function getVisibleAspect(item: ImageItem): number {
-  const cropW = (item.crop.right - item.crop.left) * item.naturalWidthPx;
-  const cropH = (item.crop.bottom - item.crop.top) * item.naturalHeightPx;
-  if (cropH === 0) return 1;
-  return cropW / cropH;
+function sameImageFrame(
+  item: ImageItem,
+  next: Pick<ImageItem, "crop" | "xMm" | "yMm" | "widthMm" | "heightMm">,
+): boolean {
+  return (
+    item.xMm === next.xMm &&
+    item.yMm === next.yMm &&
+    item.widthMm === next.widthMm &&
+    item.heightMm === next.heightMm &&
+    item.crop.left === next.crop.left &&
+    item.crop.top === next.crop.top &&
+    item.crop.right === next.crop.right &&
+    item.crop.bottom === next.crop.bottom
+  );
 }
 
-function normalizeRotation(degrees: number): number {
-  return Math.round((((degrees % 360) + 360) % 360) * 100) / 100;
+function clampShapeAppearance(item: DocumentItem): void {
+  if (item.type !== "shape") return;
+  item.strokeWidthMm = Math.max(0, Math.min(Math.min(item.widthMm, item.heightMm), item.strokeWidthMm));
+  item.cornerRadiusMm = Math.max(
+    0,
+    Math.min(Math.min(item.widthMm, item.heightMm) / 2, item.cornerRadiusMm),
+  );
 }
 
 // ── Document ──────────────────────────────────────────────────────────
@@ -119,6 +166,7 @@ export function createNewDocument(templateId: string): void {
     Object.assign(doc, defaultDoc());
     doc.page = { templateId: tpl.id, name: tpl.name, widthMm: tpl.widthMm, heightMm: tpl.heightMm };
     clearHistory();
+    markClean();
   }
 }
 
@@ -131,9 +179,17 @@ export function requestNewDocument(templateId: string): void {
 }
 
 export function setPageSize(widthMm: number, heightMm: number): void {
+  if (!Number.isFinite(widthMm) || !Number.isFinite(heightMm)) return;
+  const nextWidth = Math.max(10, widthMm);
+  const nextHeight = Math.max(10, heightMm);
+  if (
+    doc.page.widthMm === nextWidth &&
+    doc.page.heightMm === nextHeight &&
+    doc.page.templateId === "custom"
+  ) return;
   pushUndo();
-  doc.page.widthMm = Math.max(10, widthMm);
-  doc.page.heightMm = Math.max(10, heightMm);
+  doc.page.widthMm = nextWidth;
+  doc.page.heightMm = nextHeight;
   doc.page.templateId = "custom";
   doc.page.name = "Custom";
   markDirty();
@@ -202,15 +258,20 @@ export function addShape(shapeType: ShapeType): void {
   const count = doc.items.filter((item) => item.type === "shape" && item.shapeType === shapeType).length + 1;
   const name = shapeType === "ellipse" ? "Circle" : shapeType.charAt(0).toUpperCase() + shapeType.slice(1);
 
+  const availableWidth = Math.max(MIN_SIZE_MM, doc.page.widthMm - 20);
+  const availableHeight = Math.max(MIN_SIZE_MM, doc.page.heightMm - 20);
+  const diameter = Math.min(60, availableWidth, availableHeight);
+  const widthMm = shapeType === "ellipse" ? diameter : Math.min(80, availableWidth);
+  const heightMm = shapeType === "ellipse" ? diameter : Math.min(60, availableHeight);
   const item: ShapeItem = {
     id: createId("shp"),
     type: "shape",
     shapeType,
     name: `${name} ${count}`,
-    xMm: 40,
-    yMm: 40,
-    widthMm: shapeType === "ellipse" ? 60 : 80,
-    heightMm: 60,
+    xMm: (doc.page.widthMm - widthMm) / 2,
+    yMm: (doc.page.heightMm - heightMm) / 2,
+    widthMm,
+    heightMm,
     rotationDeg: 0,
     lockedAspectRatio: shapeType === "ellipse",
     fill: shapeType === "line" ? "none" : "#3b82f6",
@@ -228,15 +289,17 @@ export function addShape(shapeType: ShapeType): void {
 
 export function addText(): void {
   const count = doc.items.filter((item) => item.type === "text").length + 1;
+  const widthMm = Math.max(MIN_SIZE_MM, Math.min(100, doc.page.widthMm - 20));
+  const heightMm = Math.max(MIN_SIZE_MM, Math.min(20, doc.page.heightMm - 20));
   const item: TextItem = {
     id: createId("txt"),
     type: "text",
     name: `Text ${count}`,
     text: "Edit this text",
-    xMm: 30,
-    yMm: 30,
-    widthMm: Math.max(20, Math.min(100, doc.page.widthMm - 40)),
-    heightMm: 20,
+    xMm: (doc.page.widthMm - widthMm) / 2,
+    yMm: (doc.page.heightMm - heightMm) / 2,
+    widthMm,
+    heightMm,
     rotationDeg: 0,
     lockedAspectRatio: false,
     fontSizeMm: 6,
@@ -255,6 +318,7 @@ export function addText(): void {
 export function updateText(id: string, patch: Partial<TextItem>): void {
   const item = getItemById(id);
   if (!item || item.type !== "text") return;
+  if (Object.entries(patch).every(([key, value]) => item[key as keyof TextItem] === value)) return;
   pushUndo();
   Object.assign(item, patch);
   markDirty();
@@ -262,7 +326,7 @@ export function updateText(id: string, patch: Partial<TextItem>): void {
 
 export function setShapeFill(id: string, fill: string): void {
   const item = getItemById(id);
-  if (!item || item.type !== "shape") return;
+  if (!item || item.type !== "shape" || item.fill === fill) return;
   pushUndo();
   item.fill = fill;
   markDirty();
@@ -270,7 +334,7 @@ export function setShapeFill(id: string, fill: string): void {
 
 export function setShapeStroke(id: string, stroke: string): void {
   const item = getItemById(id);
-  if (!item || item.type !== "shape") return;
+  if (!item || item.type !== "shape" || item.stroke === stroke) return;
   pushUndo();
   item.stroke = stroke;
   markDirty();
@@ -278,18 +342,22 @@ export function setShapeStroke(id: string, stroke: string): void {
 
 export function setShapeStrokeWidth(id: string, mm: number): void {
   const item = getItemById(id);
-  if (!item || item.type !== "shape") return;
+  if (!item || item.type !== "shape" || !Number.isFinite(mm)) return;
+  const maxStroke = Math.min(item.widthMm, item.heightMm);
+  const width = Math.max(0, Math.min(maxStroke, mm));
+  if (item.strokeWidthMm === width) return;
   pushUndo();
-  const maxStroke = item.shapeType === "line" ? Math.max(item.widthMm, item.heightMm) : Math.min(item.widthMm, item.heightMm);
-  item.strokeWidthMm = Math.max(0, Math.min(maxStroke, mm));
+  item.strokeWidthMm = width;
   markDirty();
 }
 
 export function setShapeCornerRadius(id: string, mm: number): void {
   const item = getItemById(id);
-  if (!item || item.type !== "shape") return;
+  if (!item || item.type !== "shape" || !Number.isFinite(mm)) return;
+  const radius = Math.max(0, Math.min(Math.min(item.widthMm, item.heightMm) / 2, mm));
+  if (item.cornerRadiusMm === radius) return;
   pushUndo();
-  item.cornerRadiusMm = Math.max(0, Math.min(Math.min(item.widthMm, item.heightMm) / 2, mm));
+  item.cornerRadiusMm = radius;
   markDirty();
 }
 
@@ -302,6 +370,7 @@ export function deleteSelectedItem(): void {
   doc.items = doc.items.filter((i) => !selectedIds.includes(i.id));
   doc.selectedItemId = null;
   doc.selectedItemIds = [];
+  doc.cropModeItemId = null;
   markDirty();
 }
 
@@ -370,11 +439,23 @@ export function sendToBack(id: string): void {
   markDirty();
 }
 
-export function moveItem(id: string, xMm: number, yMm: number): void {
-  const item = getItemById(id);
-  if (!item) return;
-  item.xMm = xMm;
-  item.yMm = yMm;
+export function centerSelectedOnPage(axis: "horizontal" | "vertical" | "both"): void {
+  const selectedIds = doc.selectedItemIds.length
+    ? doc.selectedItemIds
+    : doc.selectedItemId ? [doc.selectedItemId] : [];
+  const items = doc.items.filter((item) => selectedIds.includes(item.id));
+  if (!items.length) return;
+  const { dxMm: dx, dyMm: dy } = getGroupCenteringDelta(
+    items,
+    doc.page.widthMm,
+    doc.page.heightMm,
+  );
+  if ((axis === "vertical" || dx === 0) && (axis === "horizontal" || dy === 0)) return;
+  pushUndo();
+  for (const item of items) {
+    if (axis !== "vertical") item.xMm += dx;
+    if (axis !== "horizontal") item.yMm += dy;
+  }
   markDirty();
 }
 
@@ -384,6 +465,13 @@ export function moveItemsByDelta(
   dyMm: number,
   starts: Record<string, { xMm: number; yMm: number }>,
 ): void {
+  const changed = ids.some((id) => {
+    const item = getItemById(id);
+    const start = starts[id];
+    return item && start && (item.xMm !== start.xMm + dxMm || item.yMm !== start.yMm + dyMm);
+  });
+  if (!changed) return;
+  commitPendingUndo();
   for (const id of ids) {
     const item = getItemById(id);
     const start = starts[id];
@@ -415,34 +503,54 @@ export function nudgeItem(id: string, dxMm: number, dyMm: number): void {
 export function setGridSettings(
   patch: Partial<Pick<DocumentState, "gridSizeMm" | "showGrid" | "snapToGrid" | "showGuides">>,
 ): void {
-  Object.assign(doc, patch);
-  doc.gridSizeMm = Math.max(1, doc.gridSizeMm);
+  const next = {
+    gridSizeMm: patch.gridSizeMm === undefined
+      ? doc.gridSizeMm
+      : Number.isFinite(patch.gridSizeMm) ? Math.max(1, patch.gridSizeMm) : doc.gridSizeMm,
+    showGrid: patch.showGrid ?? doc.showGrid,
+    snapToGrid: patch.snapToGrid ?? doc.snapToGrid,
+    showGuides: patch.showGuides ?? doc.showGuides,
+  };
+  if (
+    next.gridSizeMm === doc.gridSizeMm &&
+    next.showGrid === doc.showGrid &&
+    next.snapToGrid === doc.snapToGrid &&
+    next.showGuides === doc.showGuides
+  ) return;
+  pushUndo();
+  Object.assign(doc, next);
   markDirty();
 }
 
 export function setItemWidth(id: string, widthMm: number): void {
   const item = getItemById(id);
-  if (!item) return;
-  pushUndo();
+  if (!item || !Number.isFinite(widthMm)) return;
   const aspect = item.widthMm / item.heightMm || 1;
   const w = Math.max(MIN_SIZE_MM, widthMm);
+  const h = item.lockedAspectRatio ? Math.max(MIN_SIZE_MM, w / aspect) : item.heightMm;
+  if (item.widthMm === w && item.heightMm === h) return;
+  pushUndo();
   item.widthMm = w;
   if (item.lockedAspectRatio) {
-    item.heightMm = Math.max(MIN_SIZE_MM, w / aspect);
+    item.heightMm = h;
   }
+  clampShapeAppearance(item);
   markDirty();
 }
 
 export function setItemHeight(id: string, heightMm: number): void {
   const item = getItemById(id);
-  if (!item) return;
-  pushUndo();
+  if (!item || !Number.isFinite(heightMm)) return;
   const aspect = item.widthMm / item.heightMm || 1;
   const h = Math.max(MIN_SIZE_MM, heightMm);
+  const w = item.lockedAspectRatio ? Math.max(MIN_SIZE_MM, h * aspect) : item.widthMm;
+  if (item.heightMm === h && item.widthMm === w) return;
+  pushUndo();
   item.heightMm = h;
   if (item.lockedAspectRatio) {
-    item.widthMm = Math.max(MIN_SIZE_MM, h * aspect);
+    item.widthMm = w;
   }
+  clampShapeAppearance(item);
   markDirty();
 }
 
@@ -454,17 +562,22 @@ export function resizeItem(
   heightMm: number,
 ): void {
   const item = getItemById(id);
-  if (!item) return;
+  if (![xMm, yMm, widthMm, heightMm].every(Number.isFinite) || !item) return;
+  const width = Math.max(MIN_SIZE_MM, widthMm);
+  const height = Math.max(MIN_SIZE_MM, heightMm);
+  if (item.xMm === xMm && item.yMm === yMm && item.widthMm === width && item.heightMm === height) return;
+  commitPendingUndo();
   item.xMm = xMm;
   item.yMm = yMm;
-  item.widthMm = Math.max(MIN_SIZE_MM, widthMm);
-  item.heightMm = Math.max(MIN_SIZE_MM, heightMm);
+  item.widthMm = width;
+  item.heightMm = height;
+  clampShapeAppearance(item);
   markDirty();
 }
 
 export function setItemX(id: string, xMm: number): void {
   const item = getItemById(id);
-  if (!item) return;
+  if (!item || !Number.isFinite(xMm) || item.xMm === xMm) return;
   pushUndo();
   item.xMm = xMm;
   markDirty();
@@ -472,7 +585,7 @@ export function setItemX(id: string, xMm: number): void {
 
 export function setItemY(id: string, yMm: number): void {
   const item = getItemById(id);
-  if (!item) return;
+  if (!item || !Number.isFinite(yMm) || item.yMm === yMm) return;
   pushUndo();
   item.yMm = yMm;
   markDirty();
@@ -490,7 +603,7 @@ export function setItemRotation(id: string, degrees: number): void {
 
 export function setLockedAspect(id: string, locked: boolean): void {
   const item = getItemById(id);
-  if (!item) return;
+  if (!item || item.lockedAspectRatio === locked) return;
   pushUndo();
   item.lockedAspectRatio = locked;
   markDirty();
@@ -501,23 +614,30 @@ export function setLockedAspect(id: string, locked: boolean): void {
 export function setCrop(id: string, crop: ImageCrop): void {
   const item = getItemById(id);
   if (!item || item.type !== "image") return;
+  const next = applyCropToImageFrame(item, crop);
+  if (sameImageFrame(item, next)) return;
   pushUndo();
-  Object.assign(item, applyCropToImageFrame(item, crop));
+  Object.assign(item, next);
   markDirty();
 }
 
 export function updateCrop(id: string, crop: ImageCrop): void {
   const item = getItemById(id);
   if (!item || item.type !== "image") return;
-  Object.assign(item, applyCropToImageFrame(item, crop));
+  const next = applyCropToImageFrame(item, crop);
+  if (sameImageFrame(item, next)) return;
+  commitPendingUndo();
+  Object.assign(item, next);
   markDirty();
 }
 
 export function resetCrop(id: string): void {
   const item = getItemById(id);
   if (!item || item.type !== "image") return;
+  const next = applyCropToImageFrame(item, { left: 0, top: 0, right: 1, bottom: 1 });
+  if (sameImageFrame(item, next)) return;
   pushUndo();
-  Object.assign(item, applyCropToImageFrame(item, { left: 0, top: 0, right: 1, bottom: 1 }));
+  Object.assign(item, next);
   markDirty();
 }
 
@@ -532,7 +652,8 @@ export function exitCropMode(): void {
 // ── Zoom / Unit ───────────────────────────────────────────────────────
 
 export function setZoom(zoom: number): void {
-  doc.zoom = Math.max(0.1, Math.min(5, zoom));
+  if (!Number.isFinite(zoom)) return;
+  doc.zoom = Math.round(Math.max(0.1, Math.min(5, zoom)) * 100) / 100;
 }
 
 export function setUnit(unit: Unit): void {
@@ -543,9 +664,9 @@ export function setUnit(unit: Unit): void {
 
 export function saveToLocalStorage(): void {
   try {
-    const data = JSON.stringify(doc);
+    const data = serializeDocument(doc);
     localStorage.setItem(LOCAL_STORAGE_KEY, data);
-    doc.dirty = false;
+    markClean();
     showNotice("Project saved in this browser", "success");
   } catch {
     showNotice("Could not save: browser storage is unavailable or full", "error");
@@ -561,8 +682,8 @@ export function loadFromLocalStorage(showFeedback = true): boolean {
     }
     const parsed = normalizeDocument(JSON.parse(data));
     Object.assign(doc, parsed);
-    doc.dirty = false;
     clearHistory();
+    markClean();
     if (showFeedback) showNotice("Saved project loaded", "success");
     return true;
   } catch {
@@ -577,15 +698,15 @@ export function requestLoadFromLocalStorage(): void {
 }
 
 export function exportJson(): string {
-  return JSON.stringify(doc, null, 2);
+  return serializeDocument(doc, true);
 }
 
 export async function importJson(file: File): Promise<void> {
   const text = await file.text();
   const parsed = normalizeDocument(JSON.parse(text));
   Object.assign(doc, parsed);
-  doc.dirty = false;
   clearHistory();
+  markClean();
   showNotice("Project imported", "success");
 }
 
@@ -600,55 +721,6 @@ export function requestImportJson(file: File): void {
 function clearHistory(): void {
   undoStack = [];
   redoStack = [];
+  pendingUndoSnapshot = null;
   syncUndoFlags();
-}
-
-function normalizeDocument(value: unknown): DocumentState {
-  if (!value || typeof value !== "object") throw new Error("Invalid project file");
-  const input = value as Partial<DocumentState> & { version?: number };
-  if (!input.page || !Array.isArray(input.items)) throw new Error("Invalid project file");
-  if (!Number.isFinite(input.page.widthMm) || !Number.isFinite(input.page.heightMm)) {
-    throw new Error("Invalid page dimensions");
-  }
-
-  const legacy = input.version !== 2;
-  const items = input.items.map((item) => {
-    if (
-      !item ||
-      typeof item !== "object" ||
-      (item.type !== "image" && item.type !== "shape" && item.type !== "text")
-    ) {
-      throw new Error("Invalid project item");
-    }
-    if (![item.xMm, item.yMm, item.widthMm, item.heightMm].every(Number.isFinite)) {
-      throw new Error("Invalid item dimensions");
-    }
-    if (item.type === "image") {
-      const normalized = { ...item, crop: normalizeCrop(item.crop ?? { left: 0, top: 0, right: 1, bottom: 1 }) };
-      normalized.rotationDeg = normalizeRotation(Number(normalized.rotationDeg) || 0);
-      return legacy ? migrateLegacyCropGeometry(normalized) : normalized;
-    }
-    return { ...item, rotationDeg: normalizeRotation(Number(item.rotationDeg) || 0) };
-  });
-
-  return {
-    version: 2,
-    page: {
-      templateId: String(input.page.templateId ?? "custom"),
-      name: String(input.page.name ?? "Custom"),
-      widthMm: Math.max(10, input.page.widthMm),
-      heightMm: Math.max(10, input.page.heightMm),
-    },
-    items,
-    selectedItemId: null,
-    selectedItemIds: [],
-    zoom: Number.isFinite(input.zoom) ? Math.max(0.1, Math.min(5, input.zoom!)) : 1,
-    unit: input.unit === "cm" ? "cm" : "mm",
-    gridSizeMm: Number.isFinite(input.gridSizeMm) ? Math.max(1, input.gridSizeMm!) : 5,
-    showGrid: input.showGrid === true,
-    snapToGrid: input.snapToGrid === true,
-    showGuides: input.showGuides === true,
-    cropModeItemId: null,
-    dirty: false,
-  };
 }
