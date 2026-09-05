@@ -125,3 +125,13 @@ test("serialized projects do not persist transient editor state", () => {
   assert.equal(serialized.cropModeItemId, null);
   assert.equal(serialized.dirty, false);
 });
+
+test('unknown project versions and oversized paper are rejected', () => {
+  assert.throws(() => normalizeDocument({...base,version:99}), /unsupported version/);
+  assert.throws(() => normalizeDocument({...base,page:{...base.page,widthMm:1e100}}), /2,000 mm/);
+});
+
+test('unknown and mismatched template IDs become custom paper', () => {
+  assert.equal(normalizeDocument({...base,page:{...base.page,templateId:'a4-portrait'}}).page.templateId, 'custom');
+  assert.equal(normalizeDocument({...base,page:{...base.page,templateId:'missing'}}).page.templateId, 'custom');
+});

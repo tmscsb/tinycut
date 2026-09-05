@@ -1,4 +1,5 @@
 import type { DocumentState, DocumentItem, ImageItem, ShapeItem, TextItem } from "../types/document.ts";
+import { layoutText } from "./textLayout.ts";
 
 export function exportDocumentAsSvg(state: DocumentState): string {
   const { page, items } = state;
@@ -48,10 +49,11 @@ function escapeXml(value: string): string {
 }
 
 function renderTextToSvg(item: TextItem): string {
+  const layout = layoutText(item);
   return `
-  <foreignObject x="${item.xMm}" y="${item.yMm}" width="${item.widthMm}" height="${item.heightMm}">
-    <div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;box-sizing:border-box;overflow:hidden;white-space:pre-wrap;overflow-wrap:anywhere;font-family:${escapeXml(item.fontFamily)};font-size:${item.fontSizeMm}px;font-weight:${item.fontWeight};line-height:1.2;text-align:${item.textAlign};color:${item.color};">${escapeXml(item.text)}</div>
-  </foreignObject>`;
+  <svg x="${item.xMm}" y="${item.yMm}" width="${item.widthMm}" height="${item.heightMm}" viewBox="0 0 ${item.widthMm} ${item.heightMm}" overflow="hidden">
+    <text font-family="${escapeXml(item.fontFamily)}" font-size="${item.fontSizeMm}" font-weight="${item.fontWeight}" text-anchor="${layout.anchor}" fill="${escapeXml(item.color)}" xml:space="preserve">${layout.lines.map((line, index) => `<tspan x="${layout.x}" y="${layout.baseline + index * layout.lineHeight}">${escapeXml(line)}</tspan>`).join("")}</text>
+  </svg>`;
 }
 
 function renderImageToSvg(item: ImageItem, index: number): string {

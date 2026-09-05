@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from "./Icon.svelte";
   import { setItemRotation } from "../stores/documentStore.svelte.ts";
 
   let { id, rotationDeg }: { id: string; rotationDeg: number } = $props();
@@ -31,7 +32,7 @@
       aria-label="Rotate left 90 degrees"
       onclick={() => setItemRotation(id, rotationDeg - 90)}
     >
-      ↶
+      <Icon name="undo" />
     </button>
     <input
       class="join-item input input-bordered input-sm min-w-0 flex-1"
@@ -49,7 +50,7 @@
       aria-label="Rotate right 90 degrees"
       onclick={() => setItemRotation(id, rotationDeg + 90)}
     >
-      ↷
+      <Icon name="redo" />
     </button>
   </div>
 </label>

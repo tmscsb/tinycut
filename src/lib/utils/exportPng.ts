@@ -1,5 +1,6 @@
 import type { DocumentState, Page } from "../types/document.ts";
 import { exportDocumentAsSvg } from "./exportSvg.ts";
+import { setPngDensity } from "./pngMetadata.ts";
 
 export const PNG_EXPORT_DPI = 600;
 export const MAX_PNG_EXPORT_PIXELS = 100_000_000;
@@ -15,6 +16,8 @@ export function getPngExportDimensions(page: Pick<Page, "widthMm" | "heightMm">,
     supported:
       Number.isFinite(dpi) &&
       dpi > 0 &&
+      Number.isFinite(page.widthMm) && page.widthMm > 0 &&
+      Number.isFinite(page.heightMm) && page.heightMm > 0 &&
       widthPx <= MAX_PNG_EXPORT_DIMENSION &&
       heightPx <= MAX_PNG_EXPORT_DIMENSION &&
       widthPx * heightPx <= MAX_PNG_EXPORT_PIXELS,
@@ -49,12 +52,14 @@ export async function exportDocumentAsPng(
     context.fillRect(0, 0, widthPx, heightPx);
     context.drawImage(image, 0, 0, widthPx, heightPx);
 
-    return await new Promise<Blob>((resolve, reject) => {
+    const blob = await new Promise<Blob>((resolve, reject) => {
       canvas.toBlob(
         (blob) => blob ? resolve(blob) : reject(new Error("PNG encoding failed")),
         "image/png",
       );
     });
+    const png = setPngDensity(new Uint8Array(await blob.arrayBuffer()), dpi);
+    return new Blob([png], { type: "image/png" });
   } finally {
     URL.revokeObjectURL(svgUrl);
   }

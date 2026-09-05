@@ -12,6 +12,7 @@
   import { ui, showContextMenu, showNotice } from "../stores/uiStore.svelte.ts";
   import { mmToPx, pxToMm } from "../utils/units.ts";
   import PageCanvas from "./PageCanvas.svelte";
+  import { onMount } from "svelte";
 
   let workspaceEl: HTMLDivElement | undefined = $state();
 
@@ -26,12 +27,23 @@
 
   let isFileDragOver = $state(false);
   let handledFitRequest = $state(0);
+  let lastFitZoom: number | null = null;
+
+  onMount(() => {
+    let frame = 0;
+    const observer = new ResizeObserver(() => {
+      if (lastFitZoom === null || doc.zoom !== lastFitZoom) return;
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(fitPage);
+    });
+    if (workspaceEl) observer.observe(workspaceEl);
+    return () => { observer.disconnect(); cancelAnimationFrame(frame); };
+  });
 
   function fitPage() {
     if (!workspaceEl) return;
-    const padding = Number.parseFloat(
-      getComputedStyle(workspaceEl).getPropertyValue("--workspace-padding"),
-    ) || 64;
+    const stage = workspaceEl.querySelector<HTMLElement>(".workspace-stage");
+    const padding = stage ? Number.parseFloat(getComputedStyle(stage).paddingLeft) : 64;
     const availableWidth = Math.max(80, workspaceEl.clientWidth - padding * 2);
     const availableHeight = Math.max(80, workspaceEl.clientHeight - padding * 2 - 32);
     const zoom = Math.min(
@@ -39,6 +51,7 @@
       availableHeight / mmToPx(doc.page.heightMm),
     );
     setZoom(Math.floor(zoom * 100) / 100);
+    lastFitZoom = doc.zoom;
     requestAnimationFrame(() => {
       if (!workspaceEl) return;
       workspaceEl.scrollLeft = Math.max(0, (workspaceEl.scrollWidth - workspaceEl.clientWidth) / 2);
@@ -72,7 +85,7 @@
     if (e.button !== 0) return;
     if (target.closest("[data-resize-handle]") || target.closest("[data-no-deselect]")) return;
 
-    dragging = true;
+    dragging = false;
     const itemEl = target.closest("[data-image-item]") as HTMLElement | null;
     if (itemEl) {
       const itemId = itemEl.dataset.imageItem;
@@ -86,6 +99,7 @@
         dragItemId = itemId;
         const item = doc.items.find((i) => i.id === itemId);
         if (item) {
+          dragging = true;
           beginUndo();
           dragStartMm = { x: item.xMm, y: item.yMm };
           dragStarts = Object.fromEntries(
@@ -98,6 +112,7 @@
         (itemEl as HTMLElement).setPointerCapture(e.pointerId);
       }
     } else {
+      dragItemId = null;
       if (!e.shiftKey) selectItem(null);
     }
   }
@@ -133,6 +148,33 @@
     } catch {
       // already released or the pointer was captured by an item handle
     }
+  }
+
+  function handleWheel(e: WheelEvent) {
+    if (!workspaceEl || (!e.ctrlKey && !e.metaKey) || e.deltaY === 0) return;
+
+    e.preventDefault();
+
+    const pageEl = workspaceEl.querySelector<HTMLElement>(".print-page");
+    const pageBounds = pageEl?.getBoundingClientRect();
+    const anchor = pageBounds && pageBounds.width > 0 && pageBounds.height > 0
+      ? {
+          x: (e.clientX - pageBounds.left) / pageBounds.width,
+          y: (e.clientY - pageBounds.top) / pageBounds.height,
+        }
+      : null;
+    const pointer = { x: e.clientX, y: e.clientY };
+    const previousZoom = doc.zoom;
+
+    setZoom(previousZoom + (e.deltaY < 0 ? 0.1 : -0.1));
+    if (doc.zoom === previousZoom || !pageEl || !anchor) return;
+
+    requestAnimationFrame(() => {
+      if (!workspaceEl) return;
+      const nextBounds = pageEl.getBoundingClientRect();
+      workspaceEl.scrollLeft += nextBounds.left + anchor.x * nextBounds.width - pointer.x;
+      workspaceEl.scrollTop += nextBounds.top + anchor.y * nextBounds.height - pointer.y;
+    });
   }
 
   function handleDragOver(e: DragEvent) {
@@ -203,6 +245,7 @@
   aria-label="Workspace"
   onpointerdown={handlePointerDown}
   onpointermove={handlePointerMove}
+  onwheel={handleWheel}
   onauxclick={(e) => e.preventDefault()}
   ondragover={handleDragOver}
   ondragenter={handleDragEnter}

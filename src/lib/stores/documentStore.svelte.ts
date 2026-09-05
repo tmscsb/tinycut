@@ -10,10 +10,13 @@ import {
   PAGE_TEMPLATES,
   LOCAL_STORAGE_KEY,
   MIN_SIZE_MM,
+  MAX_PAGE_SIZE_MM,
+  MAX_PROJECT_FILE_BYTES,
+  MAX_DOCUMENT_ITEMS,
 } from "../types/document.ts";
 import { createId } from "../utils/ids.ts";
 import { loadImageFile } from "../utils/image.ts";
-import { confirmAction, showNotice } from "./uiStore.svelte.ts";
+import { confirmAction, showNotice, requestFitPage } from "./uiStore.svelte.ts";
 import { applyCropToImageFrame } from "../utils/cropGeometry.ts";
 import {
   getDocumentContentSnapshot,
@@ -50,6 +53,7 @@ const MAX_UNDO = 50;
 let undoStack: string[] = [];
 let redoStack: string[] = [];
 let pendingUndoSnapshot: string | null = null;
+let textEditItemId: string | null = null;
 let cleanContentSnapshot = getDocumentContentSnapshot(doc);
 
 export const undoState = $state({ hasUndo: false, hasRedo: false });
@@ -68,8 +72,11 @@ export function endUndo(): void {
 }
 
 function appendUndo(snapshot: string): void {
+  textEditItemId = null;
   undoStack.push(snapshot);
   if (undoStack.length > MAX_UNDO) undoStack.shift();
+  // Embedded images make snapshots large. Bound history by memory as well as count.
+  while (undoStack.length > 1 && undoStack.reduce((total, entry) => total + entry.length * 2, 0) > 64 * 1024 * 1024) undoStack.shift();
   redoStack = [];
   syncUndoFlags();
 }
@@ -86,6 +93,7 @@ function pushUndo(): void {
 }
 
 export function undo(): void {
+  textEditItemId = null;
   if (undoStack.length === 0) return;
   redoStack.push(JSON.stringify(doc));
   const snapshot = JSON.parse(undoStack.pop()!) as DocumentState;
@@ -96,6 +104,7 @@ export function undo(): void {
 }
 
 export function redo(): void {
+  textEditItemId = null;
   if (redoStack.length === 0) return;
   undoStack.push(JSON.stringify(doc));
   const snapshot = JSON.parse(redoStack.pop()!) as DocumentState;
@@ -167,6 +176,7 @@ export function createNewDocument(templateId: string): void {
     doc.page = { templateId: tpl.id, name: tpl.name, widthMm: tpl.widthMm, heightMm: tpl.heightMm };
     clearHistory();
     markClean();
+    requestFitPage();
   }
 }
 
@@ -180,6 +190,10 @@ export function requestNewDocument(templateId: string): void {
 
 export function setPageSize(widthMm: number, heightMm: number): void {
   if (!Number.isFinite(widthMm) || !Number.isFinite(heightMm)) return;
+  if (widthMm > MAX_PAGE_SIZE_MM || heightMm > MAX_PAGE_SIZE_MM) {
+    showNotice("Page dimensions must be between 10 and 2,000 mm.", "error");
+    return;
+  }
   const nextWidth = Math.max(10, widthMm);
   const nextHeight = Math.max(10, heightMm);
   if (
@@ -193,6 +207,17 @@ export function setPageSize(widthMm: number, heightMm: number): void {
   doc.page.templateId = "custom";
   doc.page.name = "Custom";
   markDirty();
+  requestFitPage();
+}
+
+/** Changing paper preserves artwork and is undoable; New explicitly clears it. */
+export function setPageTemplate(templateId: string): void {
+  const template = PAGE_TEMPLATES.find((candidate) => candidate.id === templateId);
+  if (!template || doc.page.templateId === templateId) return;
+  pushUndo();
+  doc.page = { templateId, name: template.name, widthMm: template.widthMm, heightMm: template.heightMm };
+  markDirty();
+  requestFitPage();
 }
 
 // ── Selection ─────────────────────────────────────────────────────────
@@ -221,7 +246,11 @@ export function selectItem(id: string | null, additive = false): void {
 // ── Images ────────────────────────────────────────────────────────────
 
 export async function addImage(file: File): Promise<void> {
+  if (doc.items.length >= MAX_DOCUMENT_ITEMS) throw new Error("Projects can contain up to 1,000 items.");
+  const page = doc.page;
   const { src, naturalWidthPx, naturalHeightPx } = await loadImageFile(file);
+  if (doc.page !== page) throw new Error("The document changed while the image was loading. Please add it again.");
+  if (doc.items.length >= MAX_DOCUMENT_ITEMS) throw new Error("Projects can contain up to 1,000 items.");
 
   const aspect = naturalWidthPx / naturalHeightPx;
   const maxWidthMm = Math.max(MIN_SIZE_MM, doc.page.widthMm - 20);
@@ -255,8 +284,9 @@ export async function addImage(file: File): Promise<void> {
 // ── Shapes ────────────────────────────────────────────────────────────
 
 export function addShape(shapeType: ShapeType): void {
+  if (doc.items.length >= MAX_DOCUMENT_ITEMS) { showNotice("Projects can contain up to 1,000 items.", "error"); return; }
   const count = doc.items.filter((item) => item.type === "shape" && item.shapeType === shapeType).length + 1;
-  const name = shapeType === "ellipse" ? "Circle" : shapeType.charAt(0).toUpperCase() + shapeType.slice(1);
+  const name = shapeType === "ellipse" ? "Circle" : shapeType === "rect" ? "Rectangle" : "Line";
 
   const availableWidth = Math.max(MIN_SIZE_MM, doc.page.widthMm - 20);
   const availableHeight = Math.max(MIN_SIZE_MM, doc.page.heightMm - 20);
@@ -288,6 +318,7 @@ export function addShape(shapeType: ShapeType): void {
 }
 
 export function addText(): void {
+  if (doc.items.length >= MAX_DOCUMENT_ITEMS) { showNotice("Projects can contain up to 1,000 items.", "error"); return; }
   const count = doc.items.filter((item) => item.type === "text").length + 1;
   const widthMm = Math.max(MIN_SIZE_MM, Math.min(100, doc.page.widthMm - 20));
   const heightMm = Math.max(MIN_SIZE_MM, Math.min(20, doc.page.heightMm - 20));
@@ -315,13 +346,18 @@ export function addText(): void {
   markDirty();
 }
 
-export function updateText(id: string, patch: Partial<TextItem>): void {
+export function updateText(id: string, patch: Partial<TextItem>, coalesce = false): void {
   const item = getItemById(id);
   if (!item || item.type !== "text") return;
   if (Object.entries(patch).every(([key, value]) => item[key as keyof TextItem] === value)) return;
-  pushUndo();
+  if (!coalesce || textEditItemId !== id) pushUndo();
+  textEditItemId = coalesce ? id : null;
   Object.assign(item, patch);
   markDirty();
+}
+
+export function endTextEdit(): void {
+  textEditItemId = null;
 }
 
 export function setShapeFill(id: string, fill: string): void {
@@ -380,6 +416,7 @@ export function duplicateSelectedItem(): void {
     : doc.selectedItemId ? [doc.selectedItemId] : [];
   const items = doc.items.filter((item) => selectedIds.includes(item.id));
   if (!items.length) return;
+  if (doc.items.length + items.length > MAX_DOCUMENT_ITEMS) { showNotice("Projects can contain up to 1,000 items.", "error"); return; }
   pushUndo();
   const clones = items.map((item) => {
     const prefix = item.type === "image" ? "img" : item.type === "text" ? "txt" : "shp";
@@ -526,7 +563,7 @@ export function setItemWidth(id: string, widthMm: number): void {
   const item = getItemById(id);
   if (!item || !Number.isFinite(widthMm)) return;
   const aspect = item.widthMm / item.heightMm || 1;
-  const w = Math.max(MIN_SIZE_MM, widthMm);
+  const w = Math.max(MIN_SIZE_MM, item.lockedAspectRatio ? MIN_SIZE_MM * aspect : MIN_SIZE_MM, widthMm);
   const h = item.lockedAspectRatio ? Math.max(MIN_SIZE_MM, w / aspect) : item.heightMm;
   if (item.widthMm === w && item.heightMm === h) return;
   pushUndo();
@@ -542,7 +579,7 @@ export function setItemHeight(id: string, heightMm: number): void {
   const item = getItemById(id);
   if (!item || !Number.isFinite(heightMm)) return;
   const aspect = item.widthMm / item.heightMm || 1;
-  const h = Math.max(MIN_SIZE_MM, heightMm);
+  const h = Math.max(MIN_SIZE_MM, item.lockedAspectRatio ? MIN_SIZE_MM / aspect : MIN_SIZE_MM, heightMm);
   const w = item.lockedAspectRatio ? Math.max(MIN_SIZE_MM, h * aspect) : item.widthMm;
   if (item.heightMm === h && item.widthMm === w) return;
   pushUndo();
@@ -597,6 +634,17 @@ export function setItemRotation(id: string, degrees: number): void {
   const rotation = normalizeRotation(degrees);
   if (item.rotationDeg === rotation) return;
   pushUndo();
+  item.rotationDeg = rotation;
+  markDirty();
+}
+
+/** Update rotation during a pointer gesture previously opened with beginUndo(). */
+export function updateItemRotation(id: string, degrees: number): void {
+  const item = getItemById(id);
+  if (!item || !Number.isFinite(degrees)) return;
+  const rotation = normalizeRotation(degrees);
+  if (item.rotationDeg === rotation) return;
+  commitPendingUndo();
   item.rotationDeg = rotation;
   markDirty();
 }
@@ -663,13 +711,14 @@ export function setUnit(unit: Unit): void {
 // ── Persistence ───────────────────────────────────────────────────────
 
 export function saveToLocalStorage(): void {
+  endTextEdit();
   try {
     const data = serializeDocument(doc);
     localStorage.setItem(LOCAL_STORAGE_KEY, data);
     markClean();
     showNotice("Project saved in this browser", "success");
   } catch {
-    showNotice("Could not save: browser storage is unavailable or full", "error");
+    showNotice("Browser storage is unavailable or full. Download a project JSON from the Project menu to keep your work.", "error");
   }
 }
 
@@ -685,6 +734,7 @@ export function loadFromLocalStorage(showFeedback = true): boolean {
     clearHistory();
     markClean();
     if (showFeedback) showNotice("Saved project loaded", "success");
+    requestFitPage();
     return true;
   } catch {
     if (showFeedback) showNotice("The saved project is invalid or unreadable", "error");
@@ -702,23 +752,28 @@ export function exportJson(): string {
 }
 
 export async function importJson(file: File): Promise<void> {
+  if (file.size > MAX_PROJECT_FILE_BYTES) throw new Error("Project files must be 50 MB or smaller.");
+  const before = getDocumentContentSnapshot(doc);
   const text = await file.text();
   const parsed = normalizeDocument(JSON.parse(text));
+  if (getDocumentContentSnapshot(doc) !== before) throw new Error("The document changed while importing. Please open the project again.");
   Object.assign(doc, parsed);
   clearHistory();
   markClean();
+  requestFitPage();
   showNotice("Project imported", "success");
 }
 
 export function requestImportJson(file: File): void {
   const action = () => {
-    importJson(file).catch(() => showNotice("The selected project file is invalid", "error"));
+    importJson(file).catch((error) => showNotice(error instanceof Error && !(error instanceof SyntaxError) ? error.message : "The selected project file is invalid", "error"));
   };
   if (doc.dirty) confirmAction(action);
   else action();
 }
 
 function clearHistory(): void {
+  textEditItemId = null;
   undoStack = [];
   redoStack = [];
   pendingUndoSnapshot = null;

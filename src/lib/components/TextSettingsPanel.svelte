@@ -7,6 +7,7 @@
     setItemX,
     setItemY,
     updateText,
+    endTextEdit,
   } from "../stores/documentStore.svelte.ts";
   import { displayValue, parseInputToMm, formatDisplay } from "../utils/units.ts";
   import SelectionActions from "./SelectionActions.svelte";
@@ -38,7 +39,7 @@
 
   <div>
     <label class="label text-xs" for={`text-content-${item.id}`}>Content</label>
-    <textarea id={`text-content-${item.id}`} class="textarea textarea-bordered w-full" rows="4" value={item.text} onchange={(e) => updateText(item.id, { text: e.currentTarget.value })}></textarea>
+    <textarea id={`text-content-${item.id}`} class="textarea textarea-bordered w-full" rows="4" value={item.text} oninput={(e) => updateText(item.id, { text: e.currentTarget.value }, true)} onblur={endTextEdit}></textarea>
   </div>
 
   <div class="grid grid-cols-2 gap-2">

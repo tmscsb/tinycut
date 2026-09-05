@@ -2,6 +2,7 @@ export type Theme = "light" | "dark";
 
 export const ui = $state({
   showShortcuts: false,
+  showShortcutHints: false,
   showUnsavedWarning: false,
   pendingAction: null as (() => void) | null,
   theme: "light" as Theme,
@@ -44,7 +45,7 @@ export function initTheme(): void {
     // localStorage unavailable
   }
   const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-  ui.theme = saved ?? (prefersDark ? "dark" : "light");
+  ui.theme = saved === "light" || saved === "dark" ? saved : prefersDark ? "dark" : "light";
   applyTheme(ui.theme);
 }
 
@@ -54,6 +55,10 @@ export function showShortcuts(): void {
 
 export function hideShortcuts(): void {
   ui.showShortcuts = false;
+}
+
+export function toggleShortcutHints(): void {
+  ui.showShortcutHints = !ui.showShortcutHints;
 }
 
 export function showContextMenu(x: number, y: number, itemId: string): void {

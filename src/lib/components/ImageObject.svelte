@@ -4,6 +4,7 @@
   import { mmToPx, pxToMm } from "../utils/units.ts";
   import { MIN_SIZE_MM } from "../types/document.ts";
   import ResizeHandles from "./ResizeHandles.svelte";
+  import RotationHandle from "./RotationHandle.svelte";
   import CropHandles from "./CropHandles.svelte";
   import { getImageCropTransformOrigin, getImageSourceFrame } from "../utils/cropGeometry.ts";
   import { resizeFrameFromScreenDelta, type ResizeHandle } from "../utils/resizeGeometry.ts";
@@ -90,7 +91,7 @@
   data-document-item
   style="position: absolute; left: {displayX}px; top: {displayY}px; width: {displayW}px; height: {displayH}px; transform: rotate({item.rotationDeg}deg); transform-origin: {transformOriginX}px {transformOriginY}px; z-index: {zIndex}; --item-x: {item.xMm}mm; --item-y: {item.yMm}mm; --item-w: {item.widthMm}mm; --item-h: {item.heightMm}mm;"
   class="cursor-move select-none"
-  role="img"
+  role="figure"
   aria-label={item.name}
 >
   <div
@@ -118,9 +119,11 @@
   </div>
 
   {#if primarySelected && !cropMode}
+    <RotationHandle itemId={item.id} rotationDeg={item.rotationDeg} pxW={displayW} />
     <ResizeHandles
       pxW={displayW}
       pxH={displayH}
+      rotationDeg={item.rotationDeg}
       onResizeStart={handleResizeStart}
       onResizeMove={handleResizeMove}
       onResizeEnd={handleResizeEnd}

@@ -20,6 +20,7 @@
     sendToBack,
     getItem,
     requestNewDocument,
+    setItemRotation,
   } from "./lib/stores/documentStore.svelte.ts";
   import {
     ui,
@@ -32,6 +33,7 @@
     openMobilePanel,
     closeMobilePanel,
     setCompactLayout,
+    requestFitPage,
   } from "./lib/stores/uiStore.svelte.ts";
   import { onMount } from "svelte";
   import { trapTabFocus } from "./lib/utils/focus.ts";
@@ -41,7 +43,9 @@
 
   $effect(() => {
     if (!ui.showUnsavedWarning) return;
+    const previous = document.activeElement as HTMLElement | null;
     requestAnimationFrame(() => unsavedCancelButton?.focus());
+    return () => { requestAnimationFrame(() => { if (previous?.isConnected) previous.focus(); }); };
   });
 
   function handleUnsavedDialogKeydown(e: KeyboardEvent) {
@@ -57,6 +61,7 @@
   onMount(() => {
     initTheme();
     loadFromLocalStorage(false);
+    requestFitPage();
     const compactLayoutQuery = window.matchMedia("(max-width: 640px)");
     const syncCompactLayout = () => setCompactLayout(compactLayoutQuery.matches);
     syncCompactLayout();
@@ -92,6 +97,14 @@
           e.preventDefault();
           hideContextMenu();
         }
+        return;
+      }
+      if ((e.target as HTMLElement | null)?.closest(".top-toolbar details[open]")) return;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        // Commit any pending numeric field before taking the saved snapshot.
+        (document.activeElement as HTMLElement | null)?.blur();
+        queueMicrotask(saveToLocalStorage);
         return;
       }
       if (ui.compactLayout && ui.mobilePanelOpen) {
@@ -130,12 +143,6 @@
       if (mod && e.key.toLowerCase() === "d") {
         e.preventDefault();
         duplicateSelectedItem();
-        return;
-      }
-
-      if (mod && e.key.toLowerCase() === "s") {
-        e.preventDefault();
-        saveToLocalStorage();
         return;
       }
 
@@ -190,6 +197,19 @@
         return;
       }
 
+      if (
+        !mod &&
+        !e.altKey &&
+        e.key.toLowerCase() === "r" &&
+        doc.selectedItemId &&
+        !doc.cropModeItemId
+      ) {
+        e.preventDefault();
+        const item = getItem(doc.selectedItemId);
+        if (item) setItemRotation(item.id, item.rotationDeg + (e.shiftKey ? -90 : 90));
+        return;
+      }
+
       if (doc.selectedItemId) {
         const step = e.shiftKey ? 10 : 1;
         if (e.key === "ArrowUp") {
@@ -227,7 +247,7 @@
 
 <div class="h-full flex flex-col bg-base-200 app-shell">
   <TopToolbar />
-  <div class="app-main flex flex-1 overflow-hidden">
+  <main class="app-main flex flex-1 overflow-hidden" aria-label="Layout editor">
     <button
       type="button"
       class="properties-trigger no-print btn btn-sm btn-primary"
@@ -239,7 +259,7 @@
     </button>
     <Workspace />
     <PropertiesPanel />
-  </div>
+  </main>
 </div>
 
 {#if ui.notice}

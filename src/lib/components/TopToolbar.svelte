@@ -15,16 +15,28 @@
     redo,
     undoState,
     exitCropMode,
+    setPageTemplate,
   } from "../stores/documentStore.svelte.ts";
   import { ZOOM_LEVELS, PAGE_TEMPLATES } from "../types/document.ts";
   import { exportDocumentAsPng, getPngExportDimensions } from "../utils/exportPng.ts";
-  import { exportDocumentAsSvg } from "../utils/exportSvg.ts";
-  import { ui, requestFitPage, toggleTheme, showShortcuts, showNotice } from "../stores/uiStore.svelte.ts";
+  import {
+    ui,
+    requestFitPage,
+    toggleTheme,
+    toggleShortcutHints,
+    showShortcuts,
+    showNotice,
+  } from "../stores/uiStore.svelte.ts";
 
   let fileInput: HTMLInputElement | undefined = $state();
   let importInput: HTMLInputElement | undefined = $state();
   let exportingPng = $state(false);
   let pngDpi = $state(600);
+  let projectMenu: HTMLDetailsElement | undefined = $state();
+  let exportMenu: HTMLDetailsElement | undefined = $state();
+  import Icon from "./Icon.svelte";
+  import { exportDocumentAsSvg } from "../utils/exportSvg.ts";
+  import { tick } from "svelte";
   const dpiOptions = [300, 600, 1200];
   const pngDimensions = $derived(getPngExportDimensions(doc.page, pngDpi));
   const zoomOptions = $derived(
@@ -48,19 +60,16 @@
     a.href = url;
     a.download = filename;
     a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 0);
+    setTimeout(() => URL.revokeObjectURL(url), 30_000);
   }
 
-  function handleImageFile(e: Event) {
+  async function handleImageFile(e: Event) {
     const target = e.target as HTMLInputElement;
-    const file = target.files?.[0];
-    if (file) {
-      addImage(file).then(() => {
-        target.value = "";
-      }).catch(() => {
-        target.value = "";
-        showNotice("The selected image could not be loaded", "error");
-      });
+    const files = Array.from(target.files ?? []);
+    target.value = "";
+    for (const file of files) {
+      try { await addImage(file); }
+      catch (error) { showNotice(error instanceof Error ? error.message : "The selected image could not be loaded", "error"); }
     }
   }
 
@@ -79,11 +88,12 @@
       showNotice("Choose a lower DPI for this page size", "error");
       return;
     }
+    const exportDpi = pngDpi;
     exportingPng = true;
     try {
-      const blob = await exportDocumentAsPng(doc, pngDpi);
+      const blob = await exportDocumentAsPng(doc, exportDpi);
       downloadBlob(blob, "trimkit-export.png");
-      showNotice(`PNG exported at ${pngDpi} DPI`, "success");
+      showNotice(`PNG exported at ${exportDpi} DPI`, "success");
     } catch {
       showNotice("The PNG export could not be created", "error");
     } finally {
@@ -92,259 +102,121 @@
   }
 
   function handleExportJson() {
+    closeMenus();
     const json = exportJson();
     downloadBlob(new Blob([json], { type: "application/json" }), "trimkit-project.json");
     showNotice("Project JSON exported", "success");
   }
 
   function handleExportSvg() {
-    const svg = exportDocumentAsSvg(doc);
-    downloadBlob(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }), "trimkit-export.svg");
-    showNotice("SVG exported", "success");
+    closeMenus();
+    downloadBlob(new Blob([exportDocumentAsSvg(doc)], { type: "image/svg+xml" }), "trimkit-export.svg");
+    showNotice("Layered SVG exported", "success");
   }
 
-  function handlePrint() {
+  async function handlePrint() {
+    closeMenus();
     exitCropMode();
-    requestAnimationFrame(() => window.print());
+    await tick();
+    await document.fonts.ready;
+    const images = doc.items.filter((item) => item.type === "image");
+    try {
+      await Promise.all(images.map((item) => { const image = new Image(); image.src = item.src; return image.decode(); }));
+      window.print();
+    } catch {
+      showNotice("An image could not be loaded. Check your images before printing.", "error");
+    }
+  }
+
+  function closeMenus() {
+    if (projectMenu) projectMenu.open = false;
+    if (exportMenu) exportMenu.open = false;
+  }
+
+  function handleOutsidePointer(e: PointerEvent) {
+    if (e.target instanceof Node && !projectMenu?.contains(e.target) && !exportMenu?.contains(e.target)) closeMenus();
+  }
+
+  function handleMenuKey(e: KeyboardEvent) {
+    if (e.key === "Escape") {
+      const open = projectMenu?.open ? projectMenu : exportMenu?.open ? exportMenu : undefined;
+      if (open) { e.preventDefault(); e.stopPropagation(); closeMenus(); open.querySelector("summary")?.focus(); }
+    }
   }
 </script>
 
-<div class="no-print navbar gap-2 px-3 py-2 bg-base-100 border-b border-base-300 shadow-sm flex-wrap h-auto min-h-0">
-  <!-- Brand -->
-  <div class="flex items-center gap-1.5">
-    <img src="/trimkit-icon.svg" alt="TrimKit" width="20" height="20" class="rounded" />
-    <span class="text-sm font-semibold text-base-content/80 hidden xl:inline">TrimKit</span>
+<svelte:window onpointerdown={handleOutsidePointer} onkeydown={handleMenuKey} />
+
+<header class="top-toolbar no-print bg-base-100 border-b border-base-300">
+  <div class="toolbar-header">
+    <div class="toolbar-brand" aria-label="TrimKit">
+      <img src="/trimkit-icon.svg" alt="" width="28" height="28" />
+      <span>TrimKit</span>
+      <span class="toolbar-tagline">Layouts made to print</span>
+    </div>
+    <div class="toolbar-spacer"></div>
+    <span class="save-status" aria-live="polite">{doc.dirty ? "Unsaved changes" : "Up to date"}</span>
+    <button class="btn btn-sm btn-ghost toolbar-save" onclick={saveToLocalStorage} aria-label="Save to browser" title={`Save to browser (${modKey}+S)`}><Icon name="save" /><span class="desktop-label">Save</span></button>
+    <details class="dropdown dropdown-end" bind:this={projectMenu} ontoggle={() => { if (projectMenu?.open && exportMenu) exportMenu.open = false; }}>
+      <summary class="btn btn-sm btn-ghost" aria-label="Project menu"><Icon name="folder" /><span>Project</span><Icon name="chevron" size={14} /></summary>
+      <ul class="dropdown-content menu bg-base-100 rounded-box w-60 p-2 shadow-xl border border-base-300">
+        <li><button onclick={() => { closeMenus(); requestNewDocument("a4-portrait"); }}><Icon name="file" />New document</button></li>
+        <li><button onclick={() => { closeMenus(); saveToLocalStorage(); }}><Icon name="save" />Save to browser</button></li>
+        <li><button onclick={() => { closeMenus(); requestLoadFromLocalStorage(); }}>Load saved project</button></li>
+        <li><button onclick={handleExportJson}>Download project JSON</button></li>
+        <li><button onclick={() => { closeMenus(); importInput?.click(); }}>Open project JSON</button></li>
+        <li class="small-phone-help"><button onclick={() => { closeMenus(); showShortcuts(); }}><Icon name="help" />Keyboard shortcuts</button></li>
+        <li class="menu-note">Saved in this browser only. Download a project file to keep a backup.</li>
+      </ul>
+    </details>
+    <details class="dropdown dropdown-end" bind:this={exportMenu} ontoggle={() => { if (exportMenu?.open && projectMenu) projectMenu.open = false; }}>
+      <summary class="btn btn-sm btn-primary" aria-label="Export menu"><Icon name="download" /><span>Export</span><Icon name="chevron" size={14} /></summary>
+      <div class="dropdown-content export-menu bg-base-100 rounded-box w-64 p-3 shadow-xl border border-base-300">
+        <label for="png-resolution" class="block text-xs font-medium mb-2">PNG resolution</label>
+        <select id="png-resolution" class="select select-sm w-full" bind:value={pngDpi} disabled={exportingPng} aria-label="PNG export resolution">
+          {#each dpiOptions as dpi}<option value={dpi} disabled={!getPngExportDimensions(doc.page, dpi).supported}>{dpi} DPI</option>{/each}
+        </select>
+        <p class="text-xs text-base-content/65 my-2">{pngDimensions.widthPx.toLocaleString()} × {pngDimensions.heightPx.toLocaleString()} pixels</p>
+        <button class="btn btn-sm btn-primary w-full" onclick={handleExportPng} disabled={exportingPng || !pngDimensions.supported}><Icon name="image" />{exportingPng ? "Exporting…" : "Download PNG"}</button>
+        {#if !pngDimensions.supported}<p class="text-xs text-error mt-2">This page is too large for PNG. Use SVG or print instead.</p>{/if}
+        <button class="btn btn-sm btn-ghost w-full justify-start mt-2" onclick={handleExportSvg}><Icon name="download" />Download SVG</button>
+        <button class="btn btn-sm btn-ghost w-full justify-start" onclick={handlePrint}><Icon name="print" />Print / Save as PDF</button>
+        <p class="text-xs text-base-content/65 mt-2">Print at 100% scale with no margins or headers.</p>
+      </div>
+    </details>
+    <button class="btn btn-sm btn-ghost btn-square theme-control" onclick={toggleTheme} title={ui.theme === "dark" ? "Switch to light theme" : "Switch to dark theme"} aria-label={ui.theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}><Icon name={ui.theme === "dark" ? "sun" : "moon"} /></button>
+    <button class="btn btn-sm btn-ghost btn-square help-control" onclick={showShortcuts} title="Keyboard shortcuts" aria-label="Keyboard shortcuts"><Icon name="help" /></button>
   </div>
 
-  <div class="divider divider-horizontal mx-0 hidden xl:flex"></div>
-
-  <!-- Undo / Redo -->
-  <div class="join">
-    <button
-      class="join-item btn btn-sm btn-ghost"
-      onclick={undo}
-      disabled={!undoState.hasUndo}
-      title="Undo"
-      aria-label="Undo"
-    >
-      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
-      <span class="shortcut-hint hidden xl:inline-flex"><kbd class="kbd kbd-xs">{modKey}</kbd><span>+</span><kbd class="kbd kbd-xs">Z</kbd></span>
-    </button>
-    <button
-      class="join-item btn btn-sm btn-ghost"
-      onclick={redo}
-      disabled={!undoState.hasRedo}
-      title="Redo"
-      aria-label="Redo"
-    >
-      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-      <span class="shortcut-hint hidden xl:inline-flex"><kbd class="kbd kbd-xs">{modKey}</kbd><span>+</span><kbd class="kbd kbd-xs">Y</kbd></span>
-    </button>
+  <div class="toolbar-tools">
+    <div class="toolbar-group" role="group" aria-label="History">
+      <button class="btn btn-sm btn-ghost btn-square" onclick={undo} disabled={!undoState.hasUndo} title={`Undo (${modKey}+Z)`} aria-label="Undo"><Icon name="undo" /></button>
+      <button class="btn btn-sm btn-ghost btn-square" onclick={redo} disabled={!undoState.hasRedo} title={`Redo (${modKey}+Shift+Z)`} aria-label="Redo"><Icon name="redo" /></button>
+    </div>
+    <div class="toolbar-group insert-tools" role="group" aria-label="Add to page">
+      <button class="btn btn-sm btn-primary" onclick={() => fileInput?.click()} title="Import PNG, JPG, WebP, or SVG images"><Icon name="image" />Image</button>
+      <button class="btn btn-sm btn-ghost btn-square" onclick={() => addShape("rect")} title="Add rectangle" aria-label="Add rectangle"><Icon name="rectangle" /></button>
+      <button class="btn btn-sm btn-ghost btn-square" onclick={() => addShape("ellipse")} title="Add circle" aria-label="Add circle"><Icon name="circle" /></button>
+      <button class="btn btn-sm btn-ghost btn-square" onclick={() => addShape("line")} title="Add line" aria-label="Add line"><Icon name="line" /></button>
+      <button class="btn btn-sm btn-ghost btn-square" onclick={addText} title="Add text" aria-label="Add text"><Icon name="text" /></button>
+    </div>
+    <div class="toolbar-group page-tools" role="group" aria-label="Page setup">
+      <select class="select select-sm template-select" value={doc.page.templateId} onchange={(e) => setPageTemplate(e.currentTarget.value)} aria-label="Page template">
+        {#if doc.page.templateId === "custom"}<option value="custom" disabled>Custom size</option>{/if}
+        {#each PAGE_TEMPLATES as tpl}<option value={tpl.id}>{tpl.name}</option>{/each}
+      </select>
+      <select class="select select-sm unit-select" value={doc.unit} onchange={(e) => setUnit(e.currentTarget.value as "mm" | "cm")} aria-label="Measurement unit"><option value="mm">mm</option><option value="cm">cm</option></select>
+    </div>
+    <div class="toolbar-spacer"></div>
+    <div class="toolbar-group zoom-tools" role="group" aria-label="Zoom">
+      <button class="btn btn-sm btn-ghost btn-square" onclick={() => setZoom(doc.zoom - 0.1)} disabled={doc.zoom <= 0.1} title="Zoom out" aria-label="Zoom out"><Icon name="minus" size={16} /></button>
+      <select class="select select-sm zoom-select" value={doc.zoom} onchange={(e) => setZoom(Number(e.currentTarget.value))} aria-label="Zoom level">{#each zoomOptions as z}<option value={z}>{Math.round(z * 100)}%</option>{/each}</select>
+      <button class="btn btn-sm btn-ghost btn-square" onclick={() => setZoom(doc.zoom + 0.1)} disabled={doc.zoom >= 5} title="Zoom in" aria-label="Zoom in"><Icon name="plus" size={16} /></button>
+      <button class="btn btn-sm btn-ghost" onclick={requestFitPage} title="Fit page in workspace"><Icon name="fit" size={16} />Fit</button>
+      <button class="btn btn-sm btn-ghost btn-square hints-control" class:btn-active={ui.showShortcutHints} onclick={toggleShortcutHints} title="Toggle shortcut hints" aria-label="Toggle shortcut hints" aria-pressed={ui.showShortcutHints}><Icon name="keyboard" size={16} /></button>
+    </div>
   </div>
-
-  <div class="divider divider-horizontal mx-0 hidden xl:flex"></div>
-
-  <!-- Document Actions -->
-  <div class="flex items-center gap-2">
-    <button
-      class="btn btn-sm btn-ghost"
-      onclick={() => requestNewDocument("a4-portrait")}
-      title="New A4 document"
-    >
-      New
-      <span class="shortcut-hint hidden xl:inline-flex"><kbd class="kbd kbd-xs">{modKey}</kbd><span>+</span><kbd class="kbd kbd-xs">N</kbd></span>
-    </button>
-
-    <select
-      class="select select-sm select-bordered"
-      value={doc.page.templateId}
-      onchange={(e) => {
-        const select = e.currentTarget;
-        const templateId = select.value;
-        select.value = doc.page.templateId;
-        requestNewDocument(templateId);
-      }}
-      title="Page template"
-    >
-      {#if doc.page.templateId === "custom"}<option value="custom" disabled>Custom</option>{/if}
-      {#each PAGE_TEMPLATES as tpl}
-        <option value={tpl.id}>{tpl.name}</option>
-      {/each}
-    </select>
-  </div>
-
-  <div class="divider divider-horizontal mx-0 hidden xl:flex"></div>
-
-  <!-- Add Image / Shapes -->
-  <div class="join">
-    <button
-      class="join-item btn btn-sm btn-primary"
-      onclick={() => fileInput?.click()}
-      title="Import image"
-    >
-      + Image
-    </button>
-    <button
-      class="join-item btn btn-sm btn-outline"
-      onclick={() => addShape("rect")}
-      title="Add rectangle"
-      aria-label="Add rectangle"
-    >
-      □
-    </button>
-    <button
-      class="join-item btn btn-sm btn-outline"
-      onclick={() => addShape("ellipse")}
-      title="Add circle"
-      aria-label="Add circle"
-    >
-      ○
-    </button>
-    <button
-      class="join-item btn btn-sm btn-outline"
-      onclick={() => addShape("line")}
-      title="Add line"
-      aria-label="Add line"
-    >
-      ╱
-    </button>
-    <button class="join-item btn btn-sm btn-outline" onclick={addText} title="Add text" aria-label="Add text">T</button>
-  </div>
-  <input
-    type="file"
-    accept="image/png,image/jpeg,image/webp,image/svg+xml"
-    class="hidden"
-    bind:this={fileInput}
-    onchange={handleImageFile}
-  />
-
-  <div class="divider divider-horizontal mx-0 hidden xl:flex"></div>
-
-  <!-- Unit & Zoom -->
-  <select
-    class="select select-sm select-bordered w-16"
-    value={doc.unit}
-    onchange={(e) => setUnit((e.target as HTMLSelectElement).value as "mm" | "cm")}
-    title="Measurement unit"
-  >
-    <option value="mm">mm</option>
-    <option value="cm">cm</option>
-  </select>
-
-  <div class="join">
-    <button
-      class="join-item btn btn-sm"
-      onclick={() => setZoom(Math.max(0.1, doc.zoom - 0.1))}
-      title="Zoom out"
-    >
-      −
-      <span class="shortcut-hint hidden xl:inline-flex"><kbd class="kbd kbd-xs">{modKey}</kbd><span>+</span><kbd class="kbd kbd-xs">−</kbd></span>
-    </button>
-
-    <select
-      class="join-item select select-sm w-20 text-center"
-      value={doc.zoom}
-      onchange={(e) => setZoom(Number((e.target as HTMLSelectElement).value))}
-      title="Zoom level"
-    >
-      {#each zoomOptions as z}
-        <option value={z}>{Math.round(z * 100)}%</option>
-      {/each}
-    </select>
-
-    <button
-      class="join-item btn btn-sm"
-      onclick={() => setZoom(Math.min(5, doc.zoom + 0.1))}
-      title="Zoom in"
-    >
-      +
-      <span class="shortcut-hint hidden xl:inline-flex"><kbd class="kbd kbd-xs">{modKey}</kbd><span>+</span><kbd class="kbd kbd-xs">+</kbd></span>
-    </button>
-  </div>
-
-  <button
-    class="btn btn-sm btn-ghost"
-    onclick={requestFitPage}
-    title="Fit page in workspace"
-  >
-    Fit
-  </button>
-
-  <button
-    class="btn btn-sm btn-ghost hidden xl:inline-flex"
-    onclick={() => setZoom(1)}
-    title="Reset zoom"
-  >
-    100%
-    <span class="shortcut-hint hidden xl:inline-flex"><kbd class="kbd kbd-xs">{modKey}</kbd><span>+</span><kbd class="kbd kbd-xs">0</kbd></span>
-  </button>
-
-  <div class="divider divider-horizontal mx-0 hidden xl:flex"></div>
-
-  <!-- Export & Print -->
-  <div class="join">
-    <button class="join-item btn btn-sm btn-ghost" onclick={handleExportSvg} title="Export as layered SVG">
-      SVG
-    </button>
-    <button class="join-item btn btn-sm btn-ghost" onclick={handleExportPng} disabled={exportingPng || !pngDimensions.supported} title={`Export ${pngDimensions.widthPx} × ${pngDimensions.heightPx} PNG at ${pngDpi} DPI`}>
-      {exportingPng ? "Exporting…" : "PNG"}
-    </button>
-    <select
-      class="join-item select select-sm select-bordered w-24"
-      bind:value={pngDpi}
-      disabled={exportingPng}
-      title="PNG export resolution"
-      aria-label="PNG export resolution"
-    >
-      {#each dpiOptions as dpi}
-        <option value={dpi} disabled={!getPngExportDimensions(doc.page, dpi).supported}>{dpi} DPI</option>
-      {/each}
-    </select>
-  </div>
-  <button class="btn btn-sm btn-ghost" onclick={handlePrint} title="Print">
-    Print
-  </button>
-
-  <div class="divider divider-horizontal mx-0 hidden xl:flex"></div>
-
-  <!-- Project persistence -->
-  <div class="dropdown dropdown-end">
-    <button class="btn btn-sm {doc.dirty ? 'btn-warning' : 'btn-ghost'}" type="button" tabindex="0">
-      Project
-      {#if doc.dirty}<span class="badge badge-xs badge-warning"></span>{/if}
-      <span aria-hidden="true">▾</span>
-    </button>
-    <ul class="dropdown-content menu bg-base-100 rounded-box z-50 w-52 p-2 shadow-xl border border-base-300">
-      <li><button onclick={() => saveToLocalStorage()}>Save to browser <span class="ml-auto inline-flex items-center gap-1"><kbd class="kbd kbd-xs">{modKey}</kbd><span>+</span><kbd class="kbd kbd-xs">S</kbd></span></button></li>
-      <li><button onclick={requestLoadFromLocalStorage}>Load saved project</button></li>
-      <li><button onclick={handleExportJson}>Export project JSON</button></li>
-      <li><button onclick={() => importInput?.click()}>Import project JSON</button></li>
-    </ul>
-  </div>
-  <input type="file" accept=".json" class="hidden" bind:this={importInput} onchange={handleImportJson} />
-
-  <div class="flex-1"></div>
-
-  <!-- Theme toggle + Help -->
-  <button
-    class="btn btn-sm btn-ghost btn-circle"
-    onclick={toggleTheme}
-    title="Toggle dark/light theme"
-    aria-label="Toggle dark/light theme"
-  >
-    {#if ui.theme === "dark"}
-      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-    {:else}
-      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-    {/if}
-  </button>
-
-  <button
-    class="btn btn-sm btn-ghost btn-circle"
-    onclick={showShortcuts}
-    title="Keyboard shortcuts"
-    aria-label="Keyboard shortcuts"
-  >
-    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-  </button>
-</div>
+  {#if ui.showShortcutHints}<div class="toolbar-hints"><span><kbd>{modKey}+Z</kbd> Undo</span><span><kbd>{modKey}+S</kbd> Save</span><span><kbd>R</kbd> Rotate</span><span><kbd>Shift+click</kbd> Select multiple</span><button onclick={showShortcuts}>All shortcuts</button></div>{/if}
+</header>
+<input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" multiple class="hidden" bind:this={fileInput} onchange={handleImageFile} />
+<input type="file" accept=".json,application/json" class="hidden" bind:this={importInput} onchange={handleImportJson} />

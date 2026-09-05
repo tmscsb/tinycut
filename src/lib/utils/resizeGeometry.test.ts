@@ -2,11 +2,21 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   getGroupCenteringDelta,
+  getRotatedResizeCursor,
   resizeFrameFromScreenDelta,
   screenDeltaToLocal,
 } from "./resizeGeometry.ts";
 
 const start = { xMm: 10, yMm: 20, widthMm: 100, heightMm: 50 };
+
+test("rotates resize cursors to the item's nearest screen direction", () => {
+  assert.equal(getRotatedResizeCursor("n", 0), "n-resize");
+  assert.equal(getRotatedResizeCursor("n", 45), "ne-resize");
+  assert.equal(getRotatedResizeCursor("e", 90), "s-resize");
+  assert.equal(getRotatedResizeCursor("nw", -45), "w-resize");
+  assert.equal(getRotatedResizeCursor("n", 22), "n-resize");
+  assert.equal(getRotatedResizeCursor("n", 23), "ne-resize");
+});
 
 test("converts screen deltas to the local axes of a rotated item", () => {
   const local = screenDeltaToLocal(0, 10, 90);
@@ -80,4 +90,13 @@ test("centers a group without collapsing its internal layout", () => {
   assert.deepEqual(delta, { dxMm: 10, dyMm: 5 });
   assert.equal((frames[1].xMm + delta.dxMm) - (frames[0].xMm + delta.dxMm), 30);
   assert.equal((frames[1].yMm + delta.dyMm) - (frames[0].yMm + delta.dyMm), 30);
+});
+
+test('centering a mixed-rotation group uses the visible bounds', () => {
+  const delta = getGroupCenteringDelta([
+    { xMm: 0, yMm: 0, widthMm: 100, heightMm: 10, rotationDeg: 90 },
+    { xMm: 100, yMm: 0, widthMm: 20, heightMm: 10, rotationDeg: 0 },
+  ], 200, 200);
+  assert.ok(Math.abs(delta.dxMm - 17.5) < 1e-10);
+  assert.ok(Math.abs(delta.dyMm - 95) < 1e-10);
 });

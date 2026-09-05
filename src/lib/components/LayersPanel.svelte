@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from "./Icon.svelte";
   import { doc, selectItem, bringForward, sendBackward } from "../stores/documentStore.svelte.ts";
 </script>
 
@@ -17,13 +18,20 @@
       {#each [...doc.items].reverse() as item, index (item.id)}
         <div class="flex items-center gap-1 rounded-box" class:bg-primary={doc.selectedItemIds.includes(item.id)} class:text-primary-content={doc.selectedItemIds.includes(item.id)}>
           <button class="btn btn-ghost btn-sm flex-1 justify-start min-w-0" aria-pressed={doc.selectedItemIds.includes(item.id)} onclick={(e) => selectItem(item.id, e.shiftKey)} title="Shift-click to multi-select">
-            <span class="badge badge-xs">{item.type === "shape" ? (item.shapeType === "ellipse" ? "circle" : item.shapeType) : item.type}</span>
+            <Icon name={item.type === "shape" ? (item.shapeType === "ellipse" ? "circle" : item.shapeType === "rect" ? "rectangle" : "line") : item.type} size={16} />
             <span class="truncate">{item.name}</span>
           </button>
-          <button class="btn btn-ghost btn-xs" aria-label={`Move ${item.name} up`} disabled={index === 0} onclick={() => bringForward(item.id)}>↑</button>
-          <button class="btn btn-ghost btn-xs" aria-label={`Move ${item.name} down`} disabled={index === doc.items.length - 1} onclick={() => sendBackward(item.id)}>↓</button>
+          <button class="btn btn-ghost btn-xs" aria-label={`Move ${item.name} up`} disabled={index === 0} onclick={() => bringForward(item.id)}><Icon name="up" size={14} /></button>
+          <button class="btn btn-ghost btn-xs" aria-label={`Move ${item.name} down`} disabled={index === doc.items.length - 1} onclick={() => sendBackward(item.id)}><Icon name="down" size={14} /></button>
         </div>
       {/each}
     </div>
   {/if}
 </div>
+
+<style>
+  .bg-primary .btn-ghost {
+    --btn-fg: var(--color-primary-content);
+    color: var(--color-primary-content);
+  }
+</style>

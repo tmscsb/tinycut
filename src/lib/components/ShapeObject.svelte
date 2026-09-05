@@ -4,6 +4,7 @@
   import { mmToPx, pxToMm } from "../utils/units.ts";
   import { MIN_SIZE_MM } from "../types/document.ts";
   import ResizeHandles from "./ResizeHandles.svelte";
+  import RotationHandle from "./RotationHandle.svelte";
   import { resizeFrameFromScreenDelta, type ResizeHandle } from "../utils/resizeGeometry.ts";
 
   let { item, zIndex }: { item: ShapeItem; zIndex: number } = $props();
@@ -115,9 +116,11 @@
   </svg>
 
   {#if primarySelected}
+    <RotationHandle itemId={item.id} rotationDeg={item.rotationDeg} {pxW} />
     <ResizeHandles
       {pxW}
       {pxH}
+      rotationDeg={item.rotationDeg}
       onResizeStart={handleResizeStart}
       onResizeMove={handleResizeMove}
       onResizeEnd={handleResizeEnd}

@@ -4,7 +4,9 @@
   import { mmToPx, pxToMm } from "../utils/units.ts";
   import { MIN_SIZE_MM } from "../types/document.ts";
   import ResizeHandles from "./ResizeHandles.svelte";
+  import RotationHandle from "./RotationHandle.svelte";
   import { resizeFrameFromScreenDelta, type ResizeHandle } from "../utils/resizeGeometry.ts";
+  import { layoutText } from "../utils/textLayout.ts";
 
   let { item, zIndex }: { item: TextItem; zIndex: number } = $props();
 
@@ -14,7 +16,7 @@
   const pxY = $derived(mmToPx(item.yMm, doc.zoom));
   const pxW = $derived(mmToPx(item.widthMm, doc.zoom));
   const pxH = $derived(mmToPx(item.heightMm, doc.zoom));
-  const fontSizePx = $derived(mmToPx(item.fontSizeMm, doc.zoom));
+  const textLayout = $derived(layoutText(item));
 
   let resizing = $state(false);
   let resizeHandle = $state<ResizeHandle>("se");
@@ -71,15 +73,20 @@
   role="figure"
   aria-label={item.name}
 >
-  <div
-    class="h-full overflow-hidden whitespace-pre-wrap break-words pointer-events-none"
-    style="font-family: {item.fontFamily}; font-size: {fontSizePx}px; font-weight: {item.fontWeight}; text-align: {item.textAlign}; color: {item.color}; line-height: 1.2;"
-  >{item.text}</div>
+  <svg width="100%" height="100%" viewBox="0 0 {item.widthMm} {item.heightMm}" class="block overflow-hidden pointer-events-none">
+    <text font-family={item.fontFamily} font-size={item.fontSizeMm} font-weight={item.fontWeight} text-anchor={textLayout.anchor} fill={item.color} xml:space="preserve">
+      {#each textLayout.lines as line, index}
+        <tspan x={textLayout.x} y={textLayout.baseline + index * textLayout.lineHeight}>{line}</tspan>
+      {/each}
+    </text>
+  </svg>
 
   {#if primarySelected}
+    <RotationHandle itemId={item.id} rotationDeg={item.rotationDeg} {pxW} />
     <ResizeHandles
       {pxW}
       {pxH}
+      rotationDeg={item.rotationDeg}
       onResizeStart={handleResizeStart}
       onResizeMove={handleResizeMove}
       onResizeEnd={handleResizeEnd}

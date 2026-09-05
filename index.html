@@ -4,12 +4,16 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/trimkit-icon.svg" />
-    <title>TrimKit</title>
+    <meta name="description" content="Create print layouts at exact dimensions. Arrange, resize, and crop images, add shapes and text, and export or print. Free to use, with your files kept in your browser." />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#1d232a" media="(prefers-color-scheme: dark)" />
+    <meta name="color-scheme" content="light dark" />
+    <title>TrimKit — Free Print Layout Editor</title>
     <script>
       (function () {
         try {
           var t = localStorage.getItem("trimkit-theme");
-          if (!t) {
+          if (t !== "light" && t !== "dark") {
             t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
           }
           document.documentElement.setAttribute("data-theme", t);
@@ -20,6 +24,7 @@
     </script>
   </head>
   <body>
+    <noscript>TrimKit needs JavaScript to edit layouts. Enable JavaScript in your browser to get started. Your images and projects are processed locally.</noscript>
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>

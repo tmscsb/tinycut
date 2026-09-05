@@ -186,6 +186,28 @@ test("SVG export preserves rotation and escapes text", () => {
   const svg = exportDocumentAsSvg(state);
   assert.match(svg, /transform="rotate\(45 30 25\)"/);
   assert.match(svg, /A &lt; B &amp; C/);
-  assert.match(svg, /<foreignObject x="10" y="20" width="40" height="10">/);
-  assert.match(svg, /overflow:hidden;white-space:pre-wrap;overflow-wrap:anywhere/);
+  assert.match(svg, /<svg x="10" y="20" width="40" height="10"/);
+  assert.match(svg, /overflow="hidden"/);
+  assert.doesNotMatch(svg, /foreignObject/);
+});
+
+test("cropping a rotated image keeps source pixels fixed in world space", () => {
+  function worldPoint(item: ImageItem, sourceX: number, sourceY: number) {
+    const source = getImageSourceFrame(item);
+    const dx = (sourceX - item.crop.left) * source.widthMm - item.widthMm / 2;
+    const dy = (sourceY - item.crop.top) * source.heightMm - item.heightMm / 2;
+    const angle = item.rotationDeg * Math.PI / 180;
+    return { x: item.xMm + item.widthMm / 2 + Math.cos(angle) * dx - Math.sin(angle) * dy,
+      y: item.yMm + item.heightMm / 2 + Math.sin(angle) * dx + Math.cos(angle) * dy };
+  }
+  for (const rotationDeg of [0, 37, 90, 180, 270]) {
+    const original = image({rotationDeg});
+    const cropped = { ...original, ...applyCropToImageFrame(original, {left:0.2,top:0.1,right:0.8,bottom:0.7}) };
+    for (const [x,y] of [[0,0],[0.5,0.5],[1,1]]) {
+      const before = worldPoint(original,x,y), after = worldPoint(cropped,x,y);
+      assert.ok(Math.abs(before.x-after.x)<1e-10 && Math.abs(before.y-after.y)<1e-10, `Source moved at ${rotationDeg} degrees`);
+    }
+    const reset = { ...cropped, ...applyCropToImageFrame(cropped, {left:0,top:0,right:1,bottom:1}) };
+    assert.ok(Math.abs(reset.xMm-original.xMm)<1e-10 && Math.abs(reset.yMm-original.yMm)<1e-10);
+  }
 });

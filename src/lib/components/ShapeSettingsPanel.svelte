@@ -51,7 +51,7 @@
 <div class="space-y-5">
   <div class="pb-3 border-b border-base-300">
     <h3 class="font-semibold text-base-content text-sm truncate" title={item.name}>{item.name}</h3>
-    <p class="text-xs text-base-content/65 mt-0.5 capitalize">{item.shapeType}</p>
+    <p class="text-xs text-base-content/65 mt-0.5 capitalize">{item.shapeType === "rect" ? "Rectangle" : item.shapeType === "ellipse" ? "Ellipse" : "Line"} properties</p>
   </div>
 
   <!-- Position -->
@@ -152,7 +152,7 @@
         aria-label="Stroke color"
       />
       <div class="flex-1">
-        <label class="block text-xs text-base-content/60 mb-1" for={`shp-sw-${item.id}`}>Width ({doc.unit})</label>
+        <label class="block text-xs text-base-content/60 mb-1" for={`shp-sw-${item.id}`}>Stroke width ({doc.unit})</label>
         <input
           id={`shp-sw-${item.id}`}
           type="number"
@@ -170,6 +170,7 @@
       <h4 class="text-xs font-medium text-base-content/65 uppercase tracking-wide mb-2">Corner Radius</h4>
       <input
         id={`shp-cr-${item.id}`}
+        aria-label={`Corner radius (${doc.unit})`}
         type="number"
         class="input input-bordered input-sm w-full"
         min="0" step="0.5"

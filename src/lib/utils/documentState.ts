@@ -7,6 +7,9 @@ import {
   type ShapeType,
   type TextItem,
   MIN_SIZE_MM,
+  MAX_PAGE_SIZE_MM,
+  MAX_DOCUMENT_ITEMS,
+  PAGE_TEMPLATES,
 } from "../types/document.ts";
 import { migrateLegacyCropGeometry, normalizeCrop } from "./cropGeometry.ts";
 
@@ -46,7 +49,7 @@ function color(value: unknown, fallback: string, allowNone = false): string {
 
 export function normalizeRotation(degrees: number): number {
   if (!Number.isFinite(degrees)) return 0;
-  return Math.round((((degrees % 360) + 360) % 360) * 100) / 100;
+  return (Math.round((((degrees % 360) + 360) % 360) * 100) / 100) % 360;
 }
 
 function uniqueId(value: unknown, index: number, usedIds: Set<string>): string {
@@ -101,7 +104,7 @@ function normalizeImage(
       bottom: finite(cropValue.bottom, 1),
     }),
   };
-  if (!item.src.startsWith("data:image/")) throw new Error("Invalid image source");
+  if (!/^data:image\/(png|jpeg|webp|svg\+xml)(;[^,]*)?,/i.test(item.src)) throw new Error("Invalid image source");
   return legacy ? migrateLegacyCropGeometry(item) : item;
 }
 
@@ -158,11 +161,17 @@ function normalizeText(
 
 export function normalizeDocument(value: unknown): DocumentState {
   const input = asRecord(value);
+  if (input.version !== undefined && input.version !== 1 && input.version !== 2) {
+    throw new Error("This project was made with an unsupported version of TrimKit.");
+  }
   const page = asRecord(input.page);
   if (!Array.isArray(input.items)) throw new Error("Invalid project items");
+  if (input.items.length > MAX_DOCUMENT_ITEMS) throw new Error("Projects can contain up to 1,000 items.");
 
   const widthMm = Math.max(10, requiredFinite(page.widthMm, "page width"));
   const heightMm = Math.max(10, requiredFinite(page.heightMm, "page height"));
+  if (widthMm > MAX_PAGE_SIZE_MM || heightMm > MAX_PAGE_SIZE_MM) throw new Error("Page dimensions cannot exceed 2,000 mm.");
+  const template = PAGE_TEMPLATES.find((candidate) => candidate.id === page.templateId && candidate.widthMm === widthMm && candidate.heightMm === heightMm);
   const legacy = input.version !== 2;
   const usedIds = new Set<string>();
   const items: DocumentItem[] = input.items.map((rawItem, index) => {
@@ -176,8 +185,8 @@ export function normalizeDocument(value: unknown): DocumentState {
   return {
     version: 2,
     page: {
-      templateId: text(page.templateId, "custom"),
-      name: text(page.name, "Custom").slice(0, 120),
+      templateId: template?.id ?? "custom",
+      name: template?.name ?? text(page.name, "Custom").slice(0, 120),
       widthMm,
       heightMm,
     },

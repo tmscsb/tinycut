@@ -4,6 +4,7 @@
   import ImageObject from "./ImageObject.svelte";
   import ShapeObject from "./ShapeObject.svelte";
   import TextObject from "./TextObject.svelte";
+  import Icon from "./Icon.svelte";
 
   const pagePxWidth = $derived(mmToPx(doc.page.widthMm, doc.zoom));
   const pagePxHeight = $derived(mmToPx(doc.page.heightMm, doc.zoom));
@@ -27,6 +28,16 @@
     class:page-grid={doc.showGrid}
     style="width: {pagePxWidth}px; height: {pagePxHeight}px; --grid-size: {gridPx}px"
   >
+    {#if doc.items.length === 0}
+      <div class="no-print absolute inset-0 flex items-center justify-center p-4 pointer-events-none">
+        <div class="text-center text-slate-500 max-w-64">
+          <div class="inline-flex rounded-2xl bg-slate-50 p-4 text-slate-400 mb-3"><Icon name="image" size={28} /></div>
+          <p class="text-sm font-semibold text-slate-700">Your next layout starts here</p>
+          <p class="text-xs leading-relaxed mt-2">Drop images onto the page, or add images, shapes, and text from the toolbar.</p>
+          <p class="text-xs mt-4">Free to use. Your files stay in your browser.</p>
+        </div>
+      </div>
+    {/if}
     {#if doc.showGuides}
       <div class="no-print absolute inset-y-0 left-1/2 border-l border-dashed border-info/45 pointer-events-none z-30"></div>
       <div class="no-print absolute inset-x-0 top-1/2 border-t border-dashed border-info/45 pointer-events-none z-30"></div>

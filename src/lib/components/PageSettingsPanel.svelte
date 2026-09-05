@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { doc, requestNewDocument, setPageSize, setGridSettings } from "../stores/documentStore.svelte.ts";
+  import { doc, setPageTemplate, setPageSize, setGridSettings } from "../stores/documentStore.svelte.ts";
   import { PAGE_TEMPLATES } from "../types/document.ts";
   import { showNotice } from "../stores/uiStore.svelte.ts";
 
@@ -34,13 +34,14 @@
     <h4 class="text-xs font-medium text-base-content/65 uppercase tracking-wide mb-2">Template</h4>
     <select
       id="template-select"
+      aria-label="Page settings template"
       class="select select-bordered select-sm w-full"
       value={doc.page.templateId}
       onchange={(e) => {
         const select = e.currentTarget;
         const templateId = select.value;
         select.value = doc.page.templateId;
-        requestNewDocument(templateId);
+        setPageTemplate(templateId);
       }}
     >
       {#if doc.page.templateId === "custom"}<option value="custom" disabled>Custom</option>{/if}

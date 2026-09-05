@@ -79,13 +79,18 @@ export function applyCropToImageFrame(
 ): Pick<ImageItem, "crop" | "xMm" | "yMm" | "widthMm" | "heightMm"> {
   const source = getImageSourceFrame(item);
   const crop = normalizeCrop(requestedCrop);
+  const widthMm = (crop.right - crop.left) * source.widthMm;
+  const heightMm = (crop.bottom - crop.top) * source.heightMm;
+  const dx = (crop.left - item.crop.left) * source.widthMm + (widthMm - item.widthMm) / 2;
+  const dy = (crop.top - item.crop.top) * source.heightMm + (heightMm - item.heightMm) / 2;
+  const angle = item.rotationDeg * Math.PI / 180;
 
   return {
     crop,
-    xMm: source.xMm + crop.left * source.widthMm,
-    yMm: source.yMm + crop.top * source.heightMm,
-    widthMm: (crop.right - crop.left) * source.widthMm,
-    heightMm: (crop.bottom - crop.top) * source.heightMm,
+    xMm: item.xMm + item.widthMm / 2 + Math.cos(angle) * dx - Math.sin(angle) * dy - widthMm / 2,
+    yMm: item.yMm + item.heightMm / 2 + Math.sin(angle) * dx + Math.cos(angle) * dy - heightMm / 2,
+    widthMm,
+    heightMm,
   };
 }
 
@@ -93,10 +98,6 @@ export function migrateLegacyCropGeometry(item: ImageItem): ImageItem {
   const crop = normalizeCrop(item.crop);
   return {
     ...item,
-    crop,
-    xMm: item.xMm + crop.left * item.widthMm,
-    yMm: item.yMm + crop.top * item.heightMm,
-    widthMm: (crop.right - crop.left) * item.widthMm,
-    heightMm: (crop.bottom - crop.top) * item.heightMm,
+    ...applyCropToImageFrame({ ...item, crop: { left: 0, top: 0, right: 1, bottom: 1 } }, crop),
   };
 }

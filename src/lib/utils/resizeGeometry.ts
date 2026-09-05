@@ -1,5 +1,14 @@
 export type ResizeHandle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 
+const RESIZE_DIRECTIONS = ["n", "ne", "e", "se", "s", "sw", "w", "nw"] as const;
+
+export function getRotatedResizeCursor(handle: ResizeHandle, rotationDeg: number): string {
+  const baseIndex = RESIZE_DIRECTIONS.indexOf(handle);
+  const directionSteps = Math.round(rotationDeg / 45);
+  const directionIndex = ((baseIndex + directionSteps) % 8 + 8) % 8;
+  return `${RESIZE_DIRECTIONS[directionIndex]}-resize`;
+}
+
 export type ResizeFrame = {
   xMm: number;
   yMm: number;
@@ -15,15 +24,23 @@ type ResizeOptions = {
 };
 
 export function getGroupCenteringDelta(
-  frames: ResizeFrame[],
+  frames: (ResizeFrame & { rotationDeg?: number })[],
   pageWidthMm: number,
   pageHeightMm: number,
 ): { dxMm: number; dyMm: number } {
   if (!frames.length) return { dxMm: 0, dyMm: 0 };
-  const minX = Math.min(...frames.map((frame) => frame.xMm));
-  const minY = Math.min(...frames.map((frame) => frame.yMm));
-  const maxX = Math.max(...frames.map((frame) => frame.xMm + frame.widthMm));
-  const maxY = Math.max(...frames.map((frame) => frame.yMm + frame.heightMm));
+  const bounds = frames.map((frame) => {
+    const angle = (frame.rotationDeg ?? 0) * Math.PI / 180;
+    const halfWidth = (Math.abs(Math.cos(angle)) * frame.widthMm + Math.abs(Math.sin(angle)) * frame.heightMm) / 2;
+    const halfHeight = (Math.abs(Math.sin(angle)) * frame.widthMm + Math.abs(Math.cos(angle)) * frame.heightMm) / 2;
+    const centerX = frame.xMm + frame.widthMm / 2;
+    const centerY = frame.yMm + frame.heightMm / 2;
+    return { minX: centerX - halfWidth, maxX: centerX + halfWidth, minY: centerY - halfHeight, maxY: centerY + halfHeight };
+  });
+  const minX = Math.min(...bounds.map((bound) => bound.minX));
+  const minY = Math.min(...bounds.map((bound) => bound.minY));
+  const maxX = Math.max(...bounds.map((bound) => bound.maxX));
+  const maxY = Math.max(...bounds.map((bound) => bound.maxY));
   return {
     dxMm: (pageWidthMm - (maxX - minX)) / 2 - minX,
     dyMm: (pageHeightMm - (maxY - minY)) / 2 - minY,

@@ -9,8 +9,9 @@
         { keys: ["Ctrl", "Z"], label: "Undo" },
         { keys: ["Ctrl", "Shift", "Z"], label: "Redo" },
         { keys: ["Ctrl", "Y"], label: "Redo (alternate)" },
-        { keys: ["Del", "Backspace"], label: "Delete selected item" },
-        { keys: ["Ctrl", "D"], label: "Duplicate selected item" },
+        { keys: ["Del"], label: "Delete selected items" },
+        { keys: ["Backspace"], label: "Delete (alternate)" },
+        { keys: ["Ctrl", "D"], label: "Duplicate selected items" },
         { keys: ["Ctrl", "S"], label: "Save to browser storage" },
         { keys: ["Ctrl", "N"], label: "New A4 document" },
         { keys: ["Ctrl", "]"], label: "Bring to front" },
@@ -20,7 +21,7 @@
       ],
     },
     {
-      category: "Move & Resize",
+      category: "Move, Resize & Rotate",
       items: [
         { keys: ["↑"], label: "Nudge up 1 mm" },
         { keys: ["↓"], label: "Nudge down 1 mm" },
@@ -28,11 +29,15 @@
         { keys: ["→"], label: "Nudge right 1 mm" },
         { keys: ["Shift", "Arrows"], label: "Nudge 10 mm" },
         { keys: ["Shift", "click"], label: "Add or remove from selection" },
+        { keys: ["R"], label: "Rotate clockwise 90°" },
+        { keys: ["Shift", "R"], label: "Rotate counter-clockwise 90°" },
+        { keys: ["Shift", "drag"], label: "Snap rotation handle to 15° increments" },
       ],
     },
     {
       category: "Zoom & Pan",
       items: [
+        { keys: ["Ctrl / ⌘", "scroll"], label: "Zoom with the mouse wheel" },
         { keys: ["Ctrl", "+"], label: "Zoom in" },
         { keys: ["Ctrl", "-"], label: "Zoom out" },
         { keys: ["Ctrl", "0"], label: "Reset zoom to 100%" },
@@ -47,7 +52,9 @@
 
   $effect(() => {
     if (!ui.showShortcuts) return;
+    const previous = document.activeElement as HTMLElement | null;
     requestAnimationFrame(() => closeButton?.focus());
+    return () => { requestAnimationFrame(() => { if (previous?.isConnected) previous.focus(); }); };
   });
 
   function handleKeydown(e: KeyboardEvent) {
@@ -74,9 +81,9 @@
             </h4>
             <div class="space-y-1.5">
               {#each group.items as item}
-                <div class="flex items-center justify-between py-1">
-                  <span class="text-sm text-base-content/80">{item.label}</span>
-                  <div class="flex items-center gap-0.5 text-base-content/65">
+                <div class="flex items-center justify-between gap-3 py-1">
+                  <span class="text-sm text-base-content/80 min-w-0">{item.label}</span>
+                  <div class="flex items-center gap-0.5 text-base-content/65 shrink-0">
                     {#each item.keys as key, i}
                       {#if i > 0}<span class="text-xs font-bold">+</span>{/if}
                       {#if key === "Ctrl"}
