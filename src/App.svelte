@@ -161,6 +161,15 @@
         return;
       }
 
+      if (!mod && !e.altKey && e.key === "Enter" && doc.cropModeItemId) {
+        if ((e.target as HTMLElement | null)?.closest("button, a, summary, select")) return;
+        e.preventDefault();
+        const cropForm = document.querySelector<HTMLFormElement>(".crop-panel-form");
+        if (cropForm) cropForm.requestSubmit();
+        else exitCropMode();
+        return;
+      }
+
       if (mod && (e.key === "=" || e.key === "+")) {
         e.preventDefault();
         setZoom(doc.zoom + 0.1);

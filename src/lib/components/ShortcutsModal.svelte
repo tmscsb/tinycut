@@ -17,6 +17,7 @@
         { keys: ["Ctrl", "]"], label: "Bring to front" },
         { keys: ["Ctrl", "["], label: "Send to back" },
         { keys: ["Esc"], label: "Deselect / exit crop mode" },
+        { keys: ["Enter"], label: "Apply crop and exit crop mode" },
         { keys: ["?"], label: "Show this shortcuts dialog" },
       ],
     },

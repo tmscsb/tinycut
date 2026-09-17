@@ -162,7 +162,7 @@ function normalizeText(
 export function normalizeDocument(value: unknown): DocumentState {
   const input = asRecord(value);
   if (input.version !== undefined && input.version !== 1 && input.version !== 2) {
-    throw new Error("This project was made with an unsupported version of TrimKit.");
+    throw new Error("This project was made with an unsupported version of TinyCut.");
   }
   const page = asRecord(input.page);
   if (!Array.isArray(input.items)) throw new Error("Invalid project items");

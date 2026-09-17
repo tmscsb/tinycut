@@ -1,4 +1,4 @@
-# TrimKit
+# TinyCut
 
 A browser-based layout tool for placing images on printable pages at exact physical dimensions (mm/cm). Think of it as a digital trim-and-arrange board — place, resize, crop, and position images for print.
 
@@ -35,7 +35,7 @@ A browser-based layout tool for placing images on printable pages at exact physi
 
 ## Privacy and cost
 
-TrimKit is free to use and has no account, backend, ads, analytics, or paid features. Images and project content are processed in the browser. Saving uses this browser's local storage; clearing site data removes that saved copy. Download project JSON files for durable backups and transferring work to another device. A hosting provider may log ordinary page requests separately from the application.
+TinyCut is free to use and has no account, backend, ads, analytics, or paid features. Images and project content are processed in the browser. Saving uses this browser's local storage; clearing site data removes that saved copy. Download project JSON files for durable backups and transferring work to another device. A hosting provider may log ordinary page requests separately from the application.
 
 ## Install & Run
 
@@ -106,6 +106,7 @@ When you type values in the sidebar, you can switch between mm and cm display. I
 | R / Shift + R | Rotate the primary item by +90° / −90° |
 | Ctrl/Cmd + mouse wheel | Zoom around the pointer |
 | Escape | Deselect / exit crop mode |
+| Enter | Apply crop and exit crop mode |
 
 ## Printing
 
@@ -184,7 +185,7 @@ On the host, serve `index.html` with revalidation (`Cache-Control: no-cache`) an
 - Browser storage quotas still apply to local saves containing large embedded images. JSON export is the durable backup path, and quota failures are reported in the UI.
 - PNG resolutions that would require an unsafe browser canvas allocation are disabled for the current page size; use a lower DPI or a smaller page.
 - Undo keeps up to 50 operations, with a 64 MB snapshot budget (plus the most recent operation). Large embedded images reduce the available undo depth.
-- Print margins and scaling must remain disabled in the browser print dialog; TrimKit supplies the exact CSS page size.
+- Print margins and scaling must remain disabled in the browser print dialog; TinyCut supplies the exact CSS page size.
 
 ## License
 

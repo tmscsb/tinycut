@@ -42,7 +42,7 @@
   }
 </script>
 
-<div class="space-y-3">
+<form id={`crop-form-${item.id}`} class="crop-panel-form space-y-3" novalidate onsubmit={(event) => { event.preventDefault(); applyCrop(); }}>
   <h4 class="text-xs font-medium text-base-content/65 uppercase tracking-wide">Trim from edge (%)</h4>
 
   <div class="grid grid-cols-2 gap-2">
@@ -92,9 +92,10 @@
   </div>
 
   <button
+    type="submit"
     class="btn btn-sm btn-warning w-full"
-    onclick={applyCrop}
   >
     Apply Crop
   </button>
-</div>
+  <p class="text-xs text-base-content/60 text-center">Press Enter to apply the crop.</p>
+</form>

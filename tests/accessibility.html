@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TrimKit accessibility checks</title><style>body{font:16px system-ui;margin:24px}button{padding:12px}pre{white-space:pre-wrap}iframe{width:100%;height:720px;border:1px solid #ccc}</style><h1>TrimKit accessibility checks</h1><button id="run">Run accessibility checks</button><p id="status" role="status">Ready</p><pre id="results"></pre><iframe id="app" src="/" title="TrimKit editor under test"></iframe><script type="module">
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TinyCut accessibility checks</title><style>body{font:16px system-ui;margin:24px}button{padding:12px}pre{white-space:pre-wrap}iframe{width:100%;height:720px;border:1px solid #ccc}</style><h1>TinyCut accessibility checks</h1><button id="run">Run accessibility checks</button><p id="status" role="status">Ready</p><pre id="results"></pre><iframe id="app" src="/" title="TinyCut editor under test"></iframe><script type="module">
 import axe from 'axe-core';
 const button=document.querySelector('#run');const results=document.querySelector('#results');const status=document.querySelector('#status');const frame=document.querySelector('#app');
 button.onclick=async()=>{
@@ -35,7 +35,7 @@ button.onclick=async()=>{
    imageInput.dispatchEvent(new Event('change',{bubbles:true}));
    await wait(); await check(prefix+'Image inspector');
    clickText('Crop Image'); await check(prefix+'Crop inspector');
-   clickText('Exit Crop Mode'); await wait();
+   clickText('Done Cropping'); await wait();
    clickText('Page settings'); await check(prefix+'Page settings');
    doc.querySelector('[aria-label="Project menu"]').click(); await check(prefix+'Project menu');
    clickText('New document'); await check(prefix+'Unsaved changes dialog');

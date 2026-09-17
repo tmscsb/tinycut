@@ -1,4 +1,4 @@
-# TrimKit release review
+# TinyCut release review
 
 Reviewed 5 September 2026 against the working tree, including existing rotation and toolbar work.
 

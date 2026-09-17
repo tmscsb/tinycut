@@ -131,10 +131,11 @@
     <div class="space-y-2">
       {#if doc.cropModeItemId === item.id}
         <button
+          type="submit"
+          form={`crop-form-${item.id}`}
           class="btn btn-sm btn-warning w-full"
-          onclick={() => enterCropMode(null)}
         >
-          Exit Crop Mode
+          Done Cropping
         </button>
       {:else}
         <button

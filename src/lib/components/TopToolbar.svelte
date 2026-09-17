@@ -92,7 +92,7 @@
     exportingPng = true;
     try {
       const blob = await exportDocumentAsPng(doc, exportDpi);
-      downloadBlob(blob, "trimkit-export.png");
+      downloadBlob(blob, "tinycut-export.png");
       showNotice(`PNG exported at ${exportDpi} DPI`, "success");
     } catch {
       showNotice("The PNG export could not be created", "error");
@@ -104,13 +104,13 @@
   function handleExportJson() {
     closeMenus();
     const json = exportJson();
-    downloadBlob(new Blob([json], { type: "application/json" }), "trimkit-project.json");
+    downloadBlob(new Blob([json], { type: "application/json" }), "tinycut-project.json");
     showNotice("Project JSON exported", "success");
   }
 
   function handleExportSvg() {
     closeMenus();
-    downloadBlob(new Blob([exportDocumentAsSvg(doc)], { type: "image/svg+xml" }), "trimkit-export.svg");
+    downloadBlob(new Blob([exportDocumentAsSvg(doc)], { type: "image/svg+xml" }), "tinycut-export.svg");
     showNotice("Layered SVG exported", "success");
   }
 
@@ -149,9 +149,9 @@
 
 <header class="top-toolbar no-print bg-base-100 border-b border-base-300">
   <div class="toolbar-header">
-    <div class="toolbar-brand" aria-label="TrimKit">
-      <img src="/trimkit-icon.svg" alt="" width="28" height="28" />
-      <span>TrimKit</span>
+    <div class="toolbar-brand" aria-label="TinyCut">
+      <img src="/tinycut-icon.svg" alt="" width="28" height="28" />
+      <span>TinyCut</span>
       <span class="toolbar-tagline">Layouts made to print</span>
     </div>
     <div class="toolbar-spacer"></div>

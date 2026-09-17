@@ -52,7 +52,7 @@ async function check(name: string, run: () => Promise<void> | void) {
     assert(parsed.querySelector('text')?.textContent?.includes('A < B & C'), 'Escaped text was lost');
     assert(!parsed.querySelector('foreignObject'), 'Text still uses foreignObject');
     const blob = new Blob([svg], {type:'image/svg+xml'}); await decode(blob);
-    const link = document.createElement('a'); link.href=URL.createObjectURL(blob); link.download='trimkit-browser-check.svg'; link.textContent='Download test SVG'; preview.append(link);
+    const link = document.createElement('a'); link.href=URL.createObjectURL(blob); link.download='tinycut-browser-check.svg'; link.textContent='Download test SVG'; preview.append(link);
   });
   for (const dpi of [300,600,1200]) {
     await check(`PNG at ${dpi} DPI includes text and cropped/rotated images`, async () => {
