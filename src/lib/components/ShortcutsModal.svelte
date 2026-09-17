@@ -43,6 +43,7 @@
         { keys: ["Ctrl", "-"], label: "Zoom out" },
         { keys: ["Ctrl", "0"], label: "Reset zoom to 100%" },
         { keys: ["Middle-click", "drag"], label: "Pan the workspace" },
+        { keys: ["Space", "drag"], label: "Pan the workspace" },
       ],
     },
   ];

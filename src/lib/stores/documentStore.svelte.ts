@@ -17,7 +17,7 @@ import {
 import { createId } from "../utils/ids.ts";
 import { loadImageFile } from "../utils/image.ts";
 import { confirmAction, showNotice, requestFitPage } from "./uiStore.svelte.ts";
-import { applyCropToImageFrame } from "../utils/cropGeometry.ts";
+import { composeCrop, normalizeCrop } from "../utils/cropGeometry.ts";
 import {
   getDocumentContentSnapshot,
   normalizeDocument,
@@ -46,6 +46,8 @@ function defaultDoc(): DocumentState {
 }
 
 export const doc = $state<DocumentState>(defaultDoc());
+type CropSessionBase = Pick<ImageItem, "xMm" | "yMm" | "widthMm" | "heightMm" | "crop">;
+export const cropSession = $state<{ itemId: string | null; base: CropSessionBase | null }>({ itemId: null, base: null });
 
 // ── Undo / Redo ──────────────────────────────────────────────────────
 
@@ -95,9 +97,11 @@ function pushUndo(): void {
 export function undo(): void {
   textEditItemId = null;
   if (undoStack.length === 0) return;
+  exitCropMode();
   redoStack.push(JSON.stringify(doc));
   const snapshot = JSON.parse(undoStack.pop()!) as DocumentState;
   Object.assign(doc, snapshot);
+  doc.cropModeItemId = null;
   pendingUndoSnapshot = null;
   refreshDirty();
   syncUndoFlags();
@@ -106,9 +110,11 @@ export function undo(): void {
 export function redo(): void {
   textEditItemId = null;
   if (redoStack.length === 0) return;
+  exitCropMode();
   undoStack.push(JSON.stringify(doc));
   const snapshot = JSON.parse(redoStack.pop()!) as DocumentState;
   Object.assign(doc, snapshot);
+  doc.cropModeItemId = null;
   pendingUndoSnapshot = null;
   refreshDirty();
   syncUndoFlags();
@@ -142,20 +148,8 @@ export function getSelectedItem(): DocumentItem | null {
   return getItemById(doc.selectedItemId) ?? null;
 }
 
-function sameImageFrame(
-  item: ImageItem,
-  next: Pick<ImageItem, "crop" | "xMm" | "yMm" | "widthMm" | "heightMm">,
-): boolean {
-  return (
-    item.xMm === next.xMm &&
-    item.yMm === next.yMm &&
-    item.widthMm === next.widthMm &&
-    item.heightMm === next.heightMm &&
-    item.crop.left === next.crop.left &&
-    item.crop.top === next.crop.top &&
-    item.crop.right === next.crop.right &&
-    item.crop.bottom === next.crop.bottom
-  );
+function sameCrop(a: ImageCrop, b: ImageCrop): boolean {
+  return a.left === b.left && a.top === b.top && a.right === b.right && a.bottom === b.bottom;
 }
 
 function clampShapeAppearance(item: DocumentItem): void {
@@ -240,7 +234,7 @@ export function selectItem(id: string | null, additive = false): void {
   } else {
     doc.selectedItemId = id;
   }
-  doc.cropModeItemId = null;
+  exitCropMode();
 }
 
 // ── Images ────────────────────────────────────────────────────────────
@@ -406,7 +400,7 @@ export function deleteSelectedItem(): void {
   doc.items = doc.items.filter((i) => !selectedIds.includes(i.id));
   doc.selectedItemId = null;
   doc.selectedItemIds = [];
-  doc.cropModeItemId = null;
+  exitCropMode();
   markDirty();
 }
 
@@ -662,46 +656,65 @@ export function setLockedAspect(id: string, locked: boolean): void {
 export function setCrop(id: string, crop: ImageCrop): void {
   const item = getItemById(id);
   if (!item || item.type !== "image") return;
-  const next = applyCropToImageFrame(item, crop);
-  if (sameImageFrame(item, next)) return;
+  const next = normalizeCrop(crop);
+  if (sameCrop(item.crop, next)) return;
   pushUndo();
-  Object.assign(item, next);
+  item.crop = next;
   markDirty();
 }
 
 export function updateCrop(id: string, crop: ImageCrop): void {
   const item = getItemById(id);
   if (!item || item.type !== "image") return;
-  const next = applyCropToImageFrame(item, crop);
-  if (sameImageFrame(item, next)) return;
+  const next = normalizeCrop(crop);
+  if (sameCrop(item.crop, next)) return;
   commitPendingUndo();
-  Object.assign(item, next);
+  item.crop = next;
   markDirty();
 }
 
 export function resetCrop(id: string): void {
   const item = getItemById(id);
   if (!item || item.type !== "image") return;
-  const next = applyCropToImageFrame(item, { left: 0, top: 0, right: 1, bottom: 1 });
-  if (sameImageFrame(item, next)) return;
+  const next = { left: 0, top: 0, right: 1, bottom: 1 };
+  if (sameCrop(item.crop, next)) return;
+  exitCropMode();
   pushUndo();
-  Object.assign(item, next);
+  item.crop = next;
   markDirty();
 }
 
 export function enterCropMode(id: string | null): void {
-  doc.cropModeItemId = id;
+  const item = id ? getItemById(id) : null;
+  cropSession.itemId = item?.type === "image" ? item.id : null;
+  cropSession.base = item?.type === "image" ? {
+    xMm: item.xMm, yMm: item.yMm, widthMm: item.widthMm, heightMm: item.heightMm,
+    crop: { ...item.crop },
+  } : null;
+  doc.cropModeItemId = cropSession.itemId;
 }
 
 export function exitCropMode(): void {
   doc.cropModeItemId = null;
+  cropSession.itemId = null;
+  cropSession.base = null;
+}
+
+export function setCropRelativeToSession(id: string, crop: ImageCrop): void {
+  const base = cropSession.itemId === id ? cropSession.base : null;
+  if (base) setCrop(id, composeCrop(base.crop, crop));
+}
+
+export function updateCropRelativeToSession(id: string, crop: ImageCrop): void {
+  const base = cropSession.itemId === id ? cropSession.base : null;
+  if (base) updateCrop(id, composeCrop(base.crop, crop));
 }
 
 // ── Zoom / Unit ───────────────────────────────────────────────────────
 
 export function setZoom(zoom: number): void {
   if (!Number.isFinite(zoom)) return;
-  doc.zoom = Math.round(Math.max(0.1, Math.min(5, zoom)) * 100) / 100;
+  doc.zoom = Math.round(Math.max(0.05, Math.min(10, zoom)) * 100) / 100;
 }
 
 export function setUnit(unit: Unit): void {

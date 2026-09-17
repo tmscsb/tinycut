@@ -11,7 +11,6 @@ html, body, #app {
 
 /* Workspace dot-pattern background — adapts to DaisyUI theme */
 .workspace-bg {
-  --workspace-padding: clamp(2rem, 8vw, 6rem);
   background-color: var(--color-base-300);
   background-image: radial-gradient(
     circle,
@@ -24,7 +23,7 @@ html, body, #app {
 /* Pasteboard space keeps off-page objects and their handles reachable. */
 .workspace-stage {
   min-width: max-content;
-  padding: var(--workspace-padding);
+  padding: var(--canvas-margin, 1000px);
 }
 
 .page-grid {
@@ -33,6 +32,8 @@ html, body, #app {
     linear-gradient(to bottom, rgb(15 23 42 / 12%) 1px, transparent 1px);
   background-size: var(--grid-size) var(--grid-size);
 }
+
+.print-artwork { display: none; }
 
 /* Prevent text selection while dragging/panning */
 .dragging, .panning {
@@ -180,9 +181,6 @@ button:focus-visible, summary:focus-visible { outline: 2px solid var(--color-pri
     padding-inline: 0.5rem;
   }
 
-  .workspace-bg {
-    --workspace-padding: 2rem;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -200,7 +198,6 @@ img {
 @media print {
   @page {
     margin: 0;
-    size: auto;
   }
 
   body * {
@@ -233,7 +230,13 @@ img {
 
   .workspace-stage {
     padding: 0 !important;
+    min-width: 0 !important;
+    width: auto !important;
+    display: block !important;
   }
+
+  .screen-artwork { display: none !important; }
+  .print-artwork { display: block !important; }
 
   .print-page {
     box-shadow: none !important;

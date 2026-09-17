@@ -172,13 +172,13 @@
 
       if (mod && (e.key === "=" || e.key === "+")) {
         e.preventDefault();
-        setZoom(doc.zoom + 0.1);
+        setZoom(doc.zoom * 1.25);
         return;
       }
 
       if (mod && e.key === "-") {
         e.preventDefault();
-        setZoom(doc.zoom - 0.1);
+        setZoom(doc.zoom / 1.25);
         return;
       }
 

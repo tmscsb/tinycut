@@ -3,6 +3,7 @@ import test from "node:test";
 import type { DocumentState, ImageItem } from "../types/document.ts";
 import {
   applyCropToImageFrame,
+  composeCrop,
   getImageCropTransformOrigin,
   getImageSourceFrame,
   migrateLegacyCropGeometry,
@@ -35,6 +36,14 @@ test("normalizes invalid and inverted crop bounds", () => {
     normalizeCrop({ left: -1, top: 2, right: 0, bottom: 0 }),
     { left: 0, top: 0.99, right: 0.01, bottom: 1 },
   );
+});
+
+test("a further crop cannot reveal pixels outside the current crop", () => {
+  const base = { left: 0.8, top: 0.1, right: 0.82, bottom: 0.12 };
+  const next = composeCrop(base, { left: 0.9, top: 0.9, right: 1, bottom: 1 });
+  assert.ok(next.left >= base.left && next.right <= base.right);
+  assert.ok(next.top >= base.top && next.bottom <= base.bottom);
+  assert.ok(next.right > next.left && next.bottom > next.top);
 });
 
 test("crop updates visible geometry while retaining a stable source frame", () => {

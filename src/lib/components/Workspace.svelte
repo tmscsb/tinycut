@@ -19,10 +19,16 @@
   let dragging = $state(false);
   let dragItemId = $state<string | null>(null);
   let dragStartPx = $state({ x: 0, y: 0 });
+  let dragStartScroll = { x: 0, y: 0 };
+  let dragPointerPx = { x: 0, y: 0 };
+  let autoScrollFrame = 0;
   let dragStartMm = $state({ x: 0, y: 0 });
   let dragStarts = $state<Record<string, { xMm: number; yMm: number }>>({});
 
   let panning = $state(false);
+  let spaceHeld = $state(false);
+  let canvasMarginPx = $state(1000);
+  let expandingCanvas = false;
   let panStart = $state({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
 
   let isFileDragOver = $state(false);
@@ -42,10 +48,8 @@
 
   function fitPage() {
     if (!workspaceEl) return;
-    const stage = workspaceEl.querySelector<HTMLElement>(".workspace-stage");
-    const padding = stage ? Number.parseFloat(getComputedStyle(stage).paddingLeft) : 64;
-    const availableWidth = Math.max(80, workspaceEl.clientWidth - padding * 2);
-    const availableHeight = Math.max(80, workspaceEl.clientHeight - padding * 2 - 32);
+    const availableWidth = Math.max(80, workspaceEl.clientWidth - 64);
+    const availableHeight = Math.max(80, workspaceEl.clientHeight - 96);
     const zoom = Math.min(
       availableWidth / mmToPx(doc.page.widthMm),
       availableHeight / mmToPx(doc.page.heightMm),
@@ -69,7 +73,7 @@
   function handlePointerDown(e: PointerEvent) {
     const target = e.target as HTMLElement;
 
-    if (e.button === 1) {
+    if (e.button === 1 || (e.button === 0 && spaceHeld)) {
       e.preventDefault();
       panning = true;
       panStart = {
@@ -108,6 +112,8 @@
               .map((candidate) => [candidate.id, { xMm: candidate.xMm, yMm: candidate.yMm }]),
           );
           dragStartPx = { x: e.clientX, y: e.clientY };
+          dragPointerPx = { ...dragStartPx };
+          dragStartScroll = { x: workspaceEl?.scrollLeft ?? 0, y: workspaceEl?.scrollTop ?? 0 };
         }
         (itemEl as HTMLElement).setPointerCapture(e.pointerId);
       }
@@ -128,12 +134,37 @@
 
     if (!dragging || !dragItemId) return;
 
-    const dxPx = e.clientX - dragStartPx.x;
-    const dyPx = e.clientY - dragStartPx.y;
+    dragPointerPx = { x: e.clientX, y: e.clientY };
+    if (!autoScrollFrame) autoScrollFrame = requestAnimationFrame(autoScrollWhileDragging);
+    moveDraggedItems();
+  }
+
+  function moveDraggedItems() {
+    if (!dragging || !dragItemId) return;
+    const dxPx = dragPointerPx.x - dragStartPx.x + (workspaceEl?.scrollLeft ?? 0) - dragStartScroll.x;
+    const dyPx = dragPointerPx.y - dragStartPx.y + (workspaceEl?.scrollTop ?? 0) - dragStartScroll.y;
 
     const targetX = snapValue(dragStartMm.x + pxToMm(dxPx, doc.zoom));
     const targetY = snapValue(dragStartMm.y + pxToMm(dyPx, doc.zoom));
     moveItemsByDelta(doc.selectedItemIds, targetX - dragStartMm.x, targetY - dragStartMm.y, dragStarts);
+  }
+
+  function autoScrollWhileDragging() {
+    autoScrollFrame = 0;
+    if (!dragging || !workspaceEl) return;
+    const bounds = workspaceEl.getBoundingClientRect();
+    const edge = 48;
+    const speed = (position: number, start: number, end: number) =>
+      position < start + edge ? -Math.min(24, (start + edge - position) / 2)
+        : position > end - edge ? Math.min(24, (position - end + edge) / 2) : 0;
+    const dx = speed(dragPointerPx.x, bounds.left, bounds.right);
+    const dy = speed(dragPointerPx.y, bounds.top, bounds.bottom);
+    if (dx || dy) {
+      workspaceEl.scrollLeft += dx;
+      workspaceEl.scrollTop += dy;
+      moveDraggedItems();
+      autoScrollFrame = requestAnimationFrame(autoScrollWhileDragging);
+    }
   }
 
   function handlePointerUp(e: PointerEvent) {
@@ -141,6 +172,8 @@
       panning = false;
     }
     dragging = false;
+    if (autoScrollFrame) cancelAnimationFrame(autoScrollFrame);
+    autoScrollFrame = 0;
     dragItemId = null;
     endUndo();
     try {
@@ -166,7 +199,7 @@
     const pointer = { x: e.clientX, y: e.clientY };
     const previousZoom = doc.zoom;
 
-    setZoom(previousZoom + (e.deltaY < 0 ? 0.1 : -0.1));
+    setZoom(previousZoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1));
     if (doc.zoom === previousZoom || !pageEl || !anchor) return;
 
     requestAnimationFrame(() => {
@@ -175,6 +208,35 @@
       workspaceEl.scrollLeft += nextBounds.left + anchor.x * nextBounds.width - pointer.x;
       workspaceEl.scrollTop += nextBounds.top + anchor.y * nextBounds.height - pointer.y;
     });
+  }
+
+  function handleScroll() {
+    if (!workspaceEl || expandingCanvas) return;
+    const nearEdge = workspaceEl.scrollLeft < 250 || workspaceEl.scrollTop < 250
+      || workspaceEl.scrollWidth - workspaceEl.clientWidth - workspaceEl.scrollLeft < 250
+      || workspaceEl.scrollHeight - workspaceEl.clientHeight - workspaceEl.scrollTop < 250;
+    if (!nearEdge) return;
+    expandingCanvas = true;
+    canvasMarginPx += 800;
+    requestAnimationFrame(() => {
+      if (workspaceEl) {
+        workspaceEl.scrollLeft += 800;
+        workspaceEl.scrollTop += 800;
+      }
+      expandingCanvas = false;
+    });
+  }
+
+  function handleKeyDown(e: KeyboardEvent) {
+    const target = e.target as HTMLElement;
+    if (e.code === "Space" && !e.repeat && !e.ctrlKey && !e.metaKey && !target.closest("input, textarea, select, button, a, summary, [contenteditable], [role=dialog]")) {
+      spaceHeld = true;
+      e.preventDefault();
+    }
+  }
+
+  function handleKeyUp(e: KeyboardEvent) {
+    if (e.code === "Space") spaceHeld = false;
   }
 
   function handleDragOver(e: DragEvent) {
@@ -231,10 +293,10 @@
     }
   }
 
-  const cursorClass = $derived(panning ? "cursor-grabbing" : "cursor-default");
+  const cursorClass = $derived(panning ? "cursor-grabbing" : spaceHeld ? "cursor-grab" : "cursor-default");
 </script>
 
-<svelte:window onpointerup={handlePointerUp} onpointercancel={handlePointerUp} />
+<svelte:window onpointerup={handlePointerUp} onpointercancel={handlePointerUp} onkeydown={handleKeyDown} onkeyup={handleKeyUp} onblur={() => { spaceHeld = false; panning = false; }} />
 
 <div
   class="workspace-bg flex-1 overflow-auto relative {cursorClass}"
@@ -246,6 +308,7 @@
   onpointerdown={handlePointerDown}
   onpointermove={handlePointerMove}
   onwheel={handleWheel}
+  onscroll={handleScroll}
   onauxclick={(e) => e.preventDefault()}
   ondragover={handleDragOver}
   ondragenter={handleDragEnter}
@@ -253,7 +316,7 @@
   ondrop={handleDrop}
   oncontextmenu={handleContextMenu}
 >
-  <div class="workspace-stage min-h-full flex items-start justify-center">
+  <div class="workspace-stage min-h-full flex items-start justify-center" style="--canvas-margin: {canvasMarginPx}px">
     <PageCanvas />
   </div>
 

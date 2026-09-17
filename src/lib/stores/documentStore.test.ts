@@ -6,6 +6,7 @@ import {
   setItemRotation, updateText, beginUndo, endUndo, moveItemsByDelta, undo, redo,
   undoState, saveToLocalStorage, loadFromLocalStorage, importJson, setZoom, setUnit,
   bringToFront, sendToBack, centerSelectedOnPage, setItemX, setItemY, exportJson,
+  enterCropMode, exitCropMode, setCropRelativeToSession, resetCrop,
 } from './documentStore.svelte.ts';
 import { ui } from './uiStore.svelte.ts';
 
@@ -111,4 +112,24 @@ test('an edit during asynchronous import is never silently overwritten', async (
   const importing = importJson(file); addText();
   await assert.rejects(importing, /document changed/);
   assert.equal(doc.items.length, 1);
+});
+
+test('repeated crops use the visible image and keep its print dimensions', async () => {
+  const image = { id: 'image', type: 'image', name: 'Sample', src: 'data:image/png;base64,AA==',
+    xMm: 20, yMm: 30, widthMm: 100, heightMm: 50, naturalWidthPx: 1000,
+    naturalHeightPx: 500, rotationDeg: 0, lockedAspectRatio: false,
+    crop: { left: 0, top: 0, right: 1, bottom: 1 } };
+  await importJson(new File([JSON.stringify({ version: 2, page: doc.page, items: [image] })], 'crop.json'));
+  enterCropMode('image');
+  setCropRelativeToSession('image', { left: 0.2, top: 0, right: 1, bottom: 1 });
+  exitCropMode();
+  enterCropMode('image');
+  setCropRelativeToSession('image', { left: 0.25, top: 0, right: 1, bottom: 1 });
+  assert.deepEqual((doc.items[0] as typeof image).crop, { left: 0.4, top: 0, right: 1, bottom: 1 });
+  assert.equal(doc.items[0].widthMm, 100);
+  assert.equal(doc.items[0].heightMm, 50);
+  assert.equal(doc.items[0].xMm, 20);
+  resetCrop('image');
+  assert.deepEqual((doc.items[0] as typeof image).crop, { left: 0, top: 0, right: 1, bottom: 1 });
+  assert.equal(doc.items[0].widthMm, 100);
 });

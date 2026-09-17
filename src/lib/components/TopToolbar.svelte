@@ -40,7 +40,7 @@
   const dpiOptions = [300, 600, 1200];
   const pngDimensions = $derived(getPngExportDimensions(doc.page, pngDpi));
   const zoomOptions = $derived(
-    [...new Set([0.1, 0.2, ...ZOOM_LEVELS, 3, 4, doc.zoom])].sort((a, b) => a - b),
+    [...new Set([0.05, 0.1, 0.2, ...ZOOM_LEVELS, 3, 4, 6, 8, 10, doc.zoom])].sort((a, b) => a - b),
   );
 
   const isMac = typeof navigator !== "undefined" && navigator.platform.includes("Mac");
@@ -181,7 +181,7 @@
         {#if !pngDimensions.supported}<p class="text-xs text-error mt-2">This page is too large for PNG. Use SVG or print instead.</p>{/if}
         <button class="btn btn-sm btn-ghost w-full justify-start mt-2" onclick={handleExportSvg}><Icon name="download" />Download SVG</button>
         <button class="btn btn-sm btn-ghost w-full justify-start" onclick={handlePrint}><Icon name="print" />Print / Save as PDF</button>
-        <p class="text-xs text-base-content/65 mt-2">Print at 100% scale with no margins or headers.</p>
+        <p class="text-xs text-base-content/65 mt-2">Choose {doc.page.name} paper and print at 100% scale with no margins or headers.</p>
       </div>
     </details>
     <button class="btn btn-sm btn-ghost btn-square theme-control" onclick={toggleTheme} title={ui.theme === "dark" ? "Switch to light theme" : "Switch to dark theme"} aria-label={ui.theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}><Icon name={ui.theme === "dark" ? "sun" : "moon"} /></button>
@@ -209,9 +209,9 @@
     </div>
     <div class="toolbar-spacer"></div>
     <div class="toolbar-group zoom-tools" role="group" aria-label="Zoom">
-      <button class="btn btn-sm btn-ghost btn-square" onclick={() => setZoom(doc.zoom - 0.1)} disabled={doc.zoom <= 0.1} title="Zoom out" aria-label="Zoom out"><Icon name="minus" size={16} /></button>
+      <button class="btn btn-sm btn-ghost btn-square" onclick={() => setZoom(doc.zoom / 1.25)} disabled={doc.zoom <= 0.05} title="Zoom out" aria-label="Zoom out"><Icon name="minus" size={16} /></button>
       <select class="select select-sm zoom-select" value={doc.zoom} onchange={(e) => setZoom(Number(e.currentTarget.value))} aria-label="Zoom level">{#each zoomOptions as z}<option value={z}>{Math.round(z * 100)}%</option>{/each}</select>
-      <button class="btn btn-sm btn-ghost btn-square" onclick={() => setZoom(doc.zoom + 0.1)} disabled={doc.zoom >= 5} title="Zoom in" aria-label="Zoom in"><Icon name="plus" size={16} /></button>
+      <button class="btn btn-sm btn-ghost btn-square" onclick={() => setZoom(doc.zoom * 1.25)} disabled={doc.zoom >= 10} title="Zoom in" aria-label="Zoom in"><Icon name="plus" size={16} /></button>
       <button class="btn btn-sm btn-ghost" onclick={requestFitPage} title="Fit page in workspace"><Icon name="fit" size={16} />Fit</button>
       <button class="btn btn-sm btn-ghost btn-square hints-control" class:btn-active={ui.showShortcutHints} onclick={toggleShortcutHints} title="Toggle shortcut hints" aria-label="Toggle shortcut hints" aria-pressed={ui.showShortcutHints}><Icon name="keyboard" size={16} /></button>
     </div>

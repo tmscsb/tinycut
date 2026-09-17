@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { ImageItem, ImageCrop } from "../types/document.ts";
-  import { updateCrop, beginUndo, endUndo } from "../stores/documentStore.svelte.ts";
-  import { screenDeltaToLocalCropPercent } from "../utils/cropGeometry.ts";
+  import { cropSession, updateCropRelativeToSession, beginUndo, endUndo } from "../stores/documentStore.svelte.ts";
+  import { cropRelativeTo, screenDeltaToLocalCropPercent } from "../utils/cropGeometry.ts";
 
   let { item, pxW, pxH }: {
     item: ImageItem;
@@ -21,7 +21,7 @@
     dragging = true;
     handleId = handle;
     dragStartPx = { x: e.clientX, y: e.clientY };
-    dragStartCrop = { ...item.crop };
+    dragStartCrop = { ...localCrop };
 
     const el = e.currentTarget as HTMLElement;
     el.setPointerCapture(e.pointerId);
@@ -60,7 +60,7 @@
       }
     }
 
-    updateCrop(item.id, crop);
+    updateCropRelativeToSession(item.id, crop);
   }
 
   function endDrag(e: PointerEvent) {
@@ -74,18 +74,21 @@
     }
   }
 
-  const cropLeftPct = $derived(item.crop.left * 100);
-  const cropTopPct = $derived(item.crop.top * 100);
-  const cropWidthPct = $derived((item.crop.right - item.crop.left) * 100);
-  const cropHeightPct = $derived((item.crop.bottom - item.crop.top) * 100);
+  const localCrop = $derived(cropSession.itemId === item.id && cropSession.base
+    ? cropRelativeTo(cropSession.base.crop, item.crop)
+    : { left: 0, top: 0, right: 1, bottom: 1 });
+  const cropLeftPct = $derived(localCrop.left * 100);
+  const cropTopPct = $derived(localCrop.top * 100);
+  const cropWidthPct = $derived((localCrop.right - localCrop.left) * 100);
+  const cropHeightPct = $derived((localCrop.bottom - localCrop.top) * 100);
 </script>
 
 <!-- Dark overlay outside crop region -->
 <div class="no-print absolute inset-0 pointer-events-none z-10">
   <div class="absolute bg-black/40" style="left: 0; top: 0; width: {cropLeftPct}%; height: 100%;"></div>
-  <div class="absolute bg-black/40" style="right: 0; top: 0; width: {100 - item.crop.right * 100}%; height: 100%;"></div>
+  <div class="absolute bg-black/40" style="right: 0; top: 0; width: {100 - localCrop.right * 100}%; height: 100%;"></div>
   <div class="absolute bg-black/40" style="left: {cropLeftPct}%; top: 0; width: {cropWidthPct}%; height: {cropTopPct}%;"></div>
-  <div class="absolute bg-black/40" style="left: {cropLeftPct}%; bottom: 0; width: {cropWidthPct}%; height: {100 - item.crop.bottom * 100}%;"></div>
+  <div class="absolute bg-black/40" style="left: {cropLeftPct}%; bottom: 0; width: {cropWidthPct}%; height: {100 - localCrop.bottom * 100}%;"></div>
 </div>
 
 <!-- Crop frame + handles -->

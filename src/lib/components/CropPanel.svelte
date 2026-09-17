@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ImageItem, ImageCrop } from "../types/document.ts";
-  import { setCrop, exitCropMode } from "../stores/documentStore.svelte.ts";
+  import { cropSession, setCropRelativeToSession, exitCropMode } from "../stores/documentStore.svelte.ts";
+  import { cropRelativeTo } from "../utils/cropGeometry.ts";
 
   let { item }: { item: ImageItem } = $props();
 
@@ -12,7 +13,9 @@
   let lastAppliedCrop = $state<ImageCrop | null>(null);
 
   $effect(() => {
-    const c = item.crop;
+    const c = cropSession.itemId === item.id && cropSession.base
+      ? cropRelativeTo(cropSession.base.crop, item.crop)
+      : item.crop;
     if (!lastAppliedCrop || lastAppliedCrop.left !== c.left || lastAppliedCrop.top !== c.top || lastAppliedCrop.right !== c.right || lastAppliedCrop.bottom !== c.bottom) {
       cropLeft = String((c.left * 100).toFixed(1));
       cropTop = String((c.top * 100).toFixed(1));
@@ -37,7 +40,7 @@
 
     const crop: ImageCrop = { left, top, right, bottom };
     lastAppliedCrop = { ...crop };
-    setCrop(item.id, crop);
+    setCropRelativeToSession(item.id, crop);
     exitCropMode();
   }
 </script>

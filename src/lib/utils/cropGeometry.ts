@@ -26,6 +26,34 @@ export function normalizeCrop(crop: ImageCrop): ImageCrop {
   return { left, top, right, bottom };
 }
 
+/** Translate a crop of the currently visible image back to original-image coordinates. */
+export function composeCrop(base: ImageCrop, local: ImageCrop): ImageCrop {
+  const next = normalizeCrop(local);
+  const width = base.right - base.left;
+  const height = base.bottom - base.top;
+  const minWidth = Math.min(MIN_CROP_FRACTION, width);
+  const minHeight = Math.min(MIN_CROP_FRACTION, height);
+  const left = Math.min(base.right - minWidth, base.left + next.left * width);
+  const top = Math.min(base.bottom - minHeight, base.top + next.top * height);
+  return {
+    left,
+    top,
+    right: Math.max(left + minWidth, Math.min(base.right, base.left + next.right * width)),
+    bottom: Math.max(top + minHeight, Math.min(base.bottom, base.top + next.bottom * height)),
+  };
+}
+
+export function cropRelativeTo(base: ImageCrop, crop: ImageCrop): ImageCrop {
+  const width = base.right - base.left;
+  const height = base.bottom - base.top;
+  return {
+    left: (crop.left - base.left) / width,
+    top: (crop.top - base.top) / height,
+    right: (crop.right - base.left) / width,
+    bottom: (crop.bottom - base.top) / height,
+  };
+}
+
 export function getImageSourceFrame(item: ImageItem): {
   xMm: number;
   yMm: number;

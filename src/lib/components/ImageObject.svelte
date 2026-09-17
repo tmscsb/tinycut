@@ -1,12 +1,11 @@
 <script lang="ts">
   import type { ImageItem } from "../types/document.ts";
-  import { doc, resizeItem, beginUndo, endUndo } from "../stores/documentStore.svelte.ts";
+  import { doc, cropSession, resizeItem, beginUndo, endUndo } from "../stores/documentStore.svelte.ts";
   import { mmToPx, pxToMm } from "../utils/units.ts";
   import { MIN_SIZE_MM } from "../types/document.ts";
   import ResizeHandles from "./ResizeHandles.svelte";
   import RotationHandle from "./RotationHandle.svelte";
   import CropHandles from "./CropHandles.svelte";
-  import { getImageCropTransformOrigin, getImageSourceFrame } from "../utils/cropGeometry.ts";
   import { resizeFrameFromScreenDelta, type ResizeHandle } from "../utils/resizeGeometry.ts";
 
   let { item, zIndex }: { item: ImageItem; zIndex: number } = $props();
@@ -19,25 +18,21 @@
   const cropFracH = $derived(item.crop.bottom - item.crop.top);
   const hasCrop = $derived(item.crop.left !== 0 || item.crop.top !== 0 || item.crop.right !== 1 || item.crop.bottom !== 1);
 
-  const sourceFrame = $derived(getImageSourceFrame(item));
-  const cropTransformOrigin = $derived(getImageCropTransformOrigin(item));
-  const displayX = $derived(mmToPx(cropMode ? sourceFrame.xMm : item.xMm, doc.zoom));
-  const displayY = $derived(mmToPx(cropMode ? sourceFrame.yMm : item.yMm, doc.zoom));
-  const displayW = $derived(mmToPx(cropMode ? sourceFrame.widthMm : item.widthMm, doc.zoom));
-  const displayH = $derived(mmToPx(cropMode ? sourceFrame.heightMm : item.heightMm, doc.zoom));
-  const transformOriginX = $derived(cropMode ? mmToPx(cropTransformOrigin.xMm, doc.zoom) : displayW / 2);
-  const transformOriginY = $derived(cropMode ? mmToPx(cropTransformOrigin.yMm, doc.zoom) : displayH / 2);
+  const editBase = $derived(cropMode && cropSession.itemId === item.id ? cropSession.base : null);
+  const displayItem = $derived(editBase ?? item);
+  const displayX = $derived(mmToPx(displayItem.xMm, doc.zoom));
+  const displayY = $derived(mmToPx(displayItem.yMm, doc.zoom));
+  const displayW = $derived(mmToPx(displayItem.widthMm, doc.zoom));
+  const displayH = $derived(mmToPx(displayItem.heightMm, doc.zoom));
 
   const cropViewX = $derived(item.crop.left * item.naturalWidthPx);
   const cropViewY = $derived(item.crop.top * item.naturalHeightPx);
   const cropViewW = $derived(cropFracW * item.naturalWidthPx);
   const cropViewH = $derived(cropFracH * item.naturalHeightPx);
 
-  const effectiveViewBox = $derived(
-    cropMode
-      ? `0 0 ${item.naturalWidthPx} ${item.naturalHeightPx}`
-      : (hasCrop ? `${cropViewX} ${cropViewY} ${cropViewW} ${cropViewH}` : `0 0 ${item.naturalWidthPx} ${item.naturalHeightPx}`),
-  );
+  const effectiveViewBox = $derived(editBase
+    ? `${editBase.crop.left * item.naturalWidthPx} ${editBase.crop.top * item.naturalHeightPx} ${(editBase.crop.right - editBase.crop.left) * item.naturalWidthPx} ${(editBase.crop.bottom - editBase.crop.top) * item.naturalHeightPx}`
+    : (hasCrop ? `${cropViewX} ${cropViewY} ${cropViewW} ${cropViewH}` : `0 0 ${item.naturalWidthPx} ${item.naturalHeightPx}`));
 
   let resizing = $state(false);
   let resizeHandle = $state<ResizeHandle>("se");
@@ -89,7 +84,7 @@
 <div
   data-image-item={item.id}
   data-document-item
-  style="position: absolute; left: {displayX}px; top: {displayY}px; width: {displayW}px; height: {displayH}px; transform: rotate({item.rotationDeg}deg); transform-origin: {transformOriginX}px {transformOriginY}px; z-index: {zIndex}; --item-x: {item.xMm}mm; --item-y: {item.yMm}mm; --item-w: {item.widthMm}mm; --item-h: {item.heightMm}mm;"
+  style="position: absolute; left: {displayX}px; top: {displayY}px; width: {displayW}px; height: {displayH}px; transform: rotate({item.rotationDeg}deg); transform-origin: center; z-index: {zIndex}; --item-x: {item.xMm}mm; --item-y: {item.yMm}mm; --item-w: {item.widthMm}mm; --item-h: {item.heightMm}mm;"
   class="cursor-move select-none"
   role="figure"
   aria-label={item.name}
@@ -98,11 +93,11 @@
     class="absolute inset-0 overflow-hidden"
   >
     <svg
+      class="screen-artwork block pointer-events-none"
       width="100%"
       height="100%"
       viewBox={effectiveViewBox}
       preserveAspectRatio="none"
-      class="block pointer-events-none"
     >
       <image
         href={item.src}
@@ -111,6 +106,15 @@
         width={item.naturalWidthPx}
         height={item.naturalHeightPx}
       />
+    </svg>
+    <svg
+      class="print-artwork pointer-events-none"
+      width="100%"
+      height="100%"
+      viewBox={hasCrop ? `${cropViewX} ${cropViewY} ${cropViewW} ${cropViewH}` : `0 0 ${item.naturalWidthPx} ${item.naturalHeightPx}`}
+      preserveAspectRatio="none"
+    >
+      <image href={item.src} x="0" y="0" width={item.naturalWidthPx} height={item.naturalHeightPx} />
     </svg>
 
     {#if selected && !cropMode}

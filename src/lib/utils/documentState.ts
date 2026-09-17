@@ -193,7 +193,7 @@ export function normalizeDocument(value: unknown): DocumentState {
     items,
     selectedItemId: null,
     selectedItemIds: [],
-    zoom: Math.max(0.1, Math.min(5, finite(input.zoom, 1))),
+    zoom: Math.max(0.05, Math.min(10, finite(input.zoom, 1))),
     unit: input.unit === "cm" ? "cm" : "mm",
     gridSizeMm: Math.max(1, finite(input.gridSizeMm, 5)),
     showGrid: input.showGrid === true,
