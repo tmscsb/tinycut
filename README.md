@@ -160,6 +160,20 @@ These test pages are outside the production build. `tests/fixtures/print.json` i
 
 Run `npm ci && npm run verify`, then serve **only `dist/`** from an HTTPS static host. The default build expects the site's root path. Set Vite's `base` and adjust root-relative icon URLs before hosting under a subdirectory. No application server, credentials, database, or environment variables are required. Vite's development and preview servers are for local testing, not the public service.
 
+### Cloudflare Pages
+
+Connect the GitHub repository `tmscsb/tinycut` to a Cloudflare Pages project with these build settings:
+
+| Setting | Value |
+| --- | --- |
+| Production branch | `main` |
+| Root directory | Repository root |
+| Build command | `bun run pages:build` |
+| Build output directory | `dist` |
+| Build environment variables | `BUN_VERSION=1.4.0`, `NODE_VERSION=24`, `SKIP_DEPENDENCY_INSTALL=1` |
+
+The build command installs dependencies from the committed `bun.lock` and builds the static site. Cloudflare Pages publishes the generated `dist/` directory; it should not be committed. The environment settings select the tested Bun version and the project's required Node version, while disabling Pages' separate dependency installation. Once Git integration is connected, pushes to `main` trigger production deployments.
+
 On the host, serve `index.html` with revalidation (`Cache-Control: no-cache`) and hashed `/assets/` files with long-lived immutable caching. Configure `X-Content-Type-Options: nosniff` and an appropriate `Referrer-Policy`. Check the deployed URL in a clean browser before announcing it.
 
 ## Known Limitations
