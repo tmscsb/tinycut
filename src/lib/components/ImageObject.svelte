@@ -84,7 +84,7 @@
 <div
   data-image-item={item.id}
   data-document-item
-  style="position: absolute; left: {displayX}px; top: {displayY}px; width: {displayW}px; height: {displayH}px; transform: rotate({item.rotationDeg}deg); transform-origin: center; z-index: {zIndex}; --item-x: {item.xMm}mm; --item-y: {item.yMm}mm; --item-w: {item.widthMm}mm; --item-h: {item.heightMm}mm;"
+  style="position: absolute; left: {displayX}px; top: {displayY}px; width: {displayW}px; height: {displayH}px; transform: rotate({item.rotationDeg}deg); transform-origin: center; z-index: {zIndex};"
   class="cursor-move select-none"
   role="figure"
   aria-label={item.name}
@@ -93,7 +93,7 @@
     class="absolute inset-0 overflow-hidden"
   >
     <svg
-      class="screen-artwork block pointer-events-none"
+      class="block pointer-events-none"
       width="100%"
       height="100%"
       viewBox={effectiveViewBox}
@@ -106,15 +106,6 @@
         width={item.naturalWidthPx}
         height={item.naturalHeightPx}
       />
-    </svg>
-    <svg
-      class="print-artwork pointer-events-none"
-      width="100%"
-      height="100%"
-      viewBox={hasCrop ? `${cropViewX} ${cropViewY} ${cropViewW} ${cropViewH}` : `0 0 ${item.naturalWidthPx} ${item.naturalHeightPx}`}
-      preserveAspectRatio="none"
-    >
-      <image href={item.src} x="0" y="0" width={item.naturalWidthPx} height={item.naturalHeightPx} />
     </svg>
 
     {#if selected && !cropMode}

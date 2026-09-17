@@ -18,7 +18,7 @@
     setPageTemplate,
   } from "../stores/documentStore.svelte.ts";
   import { ZOOM_LEVELS, PAGE_TEMPLATES } from "../types/document.ts";
-  import { exportDocumentAsPng, getPngExportDimensions } from "../utils/exportPng.ts";
+  import { exportDocumentAsRaster, getPngExportDimensions, type RasterExportFormat } from "../utils/exportPng.ts";
   import {
     ui,
     requestFitPage,
@@ -31,14 +31,16 @@
   let fileInput: HTMLInputElement | undefined = $state();
   let importInput: HTMLInputElement | undefined = $state();
   let exportingPng = $state(false);
-  let pngDpi = $state(600);
+  let pngDpi = $state(300);
+  let rasterFormat = $state<RasterExportFormat>("jpeg");
   let projectMenu: HTMLDetailsElement | undefined = $state();
   let exportMenu: HTMLDetailsElement | undefined = $state();
   import Icon from "./Icon.svelte";
   import { exportDocumentAsSvg } from "../utils/exportSvg.ts";
   import { tick } from "svelte";
-  const dpiOptions = [300, 600, 1200];
+  const dpiOptions = [150, 300, 600, 1200];
   const pngDimensions = $derived(getPngExportDimensions(doc.page, pngDpi));
+  const largePng = $derived(rasterFormat === "png" && pngDimensions.pixelCount >= 4_000_000);
   const zoomOptions = $derived(
     [...new Set([0.05, 0.1, 0.2, ...ZOOM_LEVELS, 3, 4, 6, 8, 10, doc.zoom])].sort((a, b) => a - b),
   );
@@ -89,13 +91,14 @@
       return;
     }
     const exportDpi = pngDpi;
+    const format = rasterFormat;
     exportingPng = true;
     try {
-      const blob = await exportDocumentAsPng(doc, exportDpi);
-      downloadBlob(blob, "tinycut-export.png");
-      showNotice(`PNG exported at ${exportDpi} DPI`, "success");
+      const blob = await exportDocumentAsRaster(doc, { dpi: exportDpi, format });
+      downloadBlob(blob, format === "jpeg" ? "tinycut-export.jpg" : "tinycut-export.png");
+      showNotice(`${format === "jpeg" ? "JPEG" : "PNG"} exported at ${exportDpi} DPI`, "success");
     } catch {
-      showNotice("The PNG export could not be created", "error");
+      showNotice("The image export could not be created", "error");
     } finally {
       exportingPng = false;
     }
@@ -172,13 +175,19 @@
     <details class="dropdown dropdown-end" bind:this={exportMenu} ontoggle={() => { if (exportMenu?.open && projectMenu) projectMenu.open = false; }}>
       <summary class="btn btn-sm btn-primary" aria-label="Export menu"><Icon name="download" /><span>Export</span><Icon name="chevron" size={14} /></summary>
       <div class="dropdown-content export-menu bg-base-100 rounded-box w-64 p-3 shadow-xl border border-base-300">
-        <label for="png-resolution" class="block text-xs font-medium mb-2">PNG resolution</label>
-        <select id="png-resolution" class="select select-sm w-full" bind:value={pngDpi} disabled={exportingPng} aria-label="PNG export resolution">
+        <label for="raster-format" class="block text-xs font-medium mb-2">Image format</label>
+        <select id="raster-format" class="select select-sm w-full mb-3" bind:value={rasterFormat} disabled={exportingPng} aria-label="Image export format">
+          <option value="jpeg">JPEG — smaller files</option>
+          <option value="png">PNG — lossless, large files</option>
+        </select>
+        <label for="png-resolution" class="block text-xs font-medium mb-2">Resolution</label>
+        <select id="png-resolution" class="select select-sm w-full" bind:value={pngDpi} disabled={exportingPng} aria-label="Image export resolution">
           {#each dpiOptions as dpi}<option value={dpi} disabled={!getPngExportDimensions(doc.page, dpi).supported}>{dpi} DPI</option>{/each}
         </select>
         <p class="text-xs text-base-content/65 my-2">{pngDimensions.widthPx.toLocaleString()} × {pngDimensions.heightPx.toLocaleString()} pixels</p>
-        <button class="btn btn-sm btn-primary w-full" onclick={handleExportPng} disabled={exportingPng || !pngDimensions.supported}><Icon name="image" />{exportingPng ? "Exporting…" : "Download PNG"}</button>
-        {#if !pngDimensions.supported}<p class="text-xs text-error mt-2">This page is too large for PNG. Use SVG or print instead.</p>{/if}
+        <button class="btn btn-sm btn-primary w-full" onclick={handleExportPng} disabled={exportingPng || !pngDimensions.supported}><Icon name="image" />{exportingPng ? "Exporting…" : rasterFormat === "jpeg" ? "Download JPEG" : "Download PNG"}</button>
+        {#if !pngDimensions.supported}<p class="text-xs text-error mt-2">This page is too large for a bitmap export. Use SVG or print instead.</p>
+        {:else if largePng}<p class="text-xs text-warning mt-2">A photo PNG at this size is often tens of megabytes. Use JPEG or 300 DPI for a smaller file.</p>{/if}
         <button class="btn btn-sm btn-ghost w-full justify-start mt-2" onclick={handleExportSvg}><Icon name="download" />Download SVG</button>
         <button class="btn btn-sm btn-ghost w-full justify-start" onclick={handlePrint}><Icon name="print" />Print / Save as PDF</button>
         <p class="text-xs text-base-content/65 mt-2">Choose {doc.page.name} paper and print at 100% scale with no margins or headers.</p>

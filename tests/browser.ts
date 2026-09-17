@@ -1,4 +1,5 @@
-import { exportDocumentAsPng } from '../src/lib/utils/exportPng.ts';
+import { exportDocumentAsPng, exportDocumentAsRaster } from '../src/lib/utils/exportPng.ts';
+import { printSurfaceInnerHtml } from '../src/lib/utils/printDocument.ts';
 import { exportDocumentAsSvg } from '../src/lib/utils/exportSvg.ts';
 import { loadImageFile } from '../src/lib/utils/image.ts';
 import { normalizeDocument } from '../src/lib/utils/documentState.ts';
@@ -9,10 +10,6 @@ const status = document.querySelector('#status')!;
 const preview = document.querySelector('#preview')!;
 function assert(condition: unknown, message: string): asserts condition { if (!condition) throw new Error(message); }
 function toBlob(canvas: HTMLCanvasElement, type: string): Promise<Blob> { return new Promise(resolve => canvas.toBlob(blob => resolve(blob!), type)); }
-async function decode(blob: Blob) {
-  const url = URL.createObjectURL(blob); const image = new Image(); image.src = url;
-  try { await image.decode(); return image; } finally { URL.revokeObjectURL(url); }
-}
 async function check(name: string, run: () => Promise<void> | void) {
   const li = document.createElement('li'); results.append(li);
   try { await run(); li.textContent = `PASS — ${name}`; li.className = 'pass'; }
@@ -45,21 +42,28 @@ async function check(name: string, run: () => Promise<void> | void) {
     let rejected = false; try { await loadImageFile(new File(['broken'],'bad.gif',{type:'image/gif'})); } catch { rejected=true; }
     assert(rejected, 'Unsupported file was accepted');
   });
-  await check('SVG is well-formed, layered, and contains native editable text', async () => {
-    const svg = exportDocumentAsSvg(state); const parsed = new DOMParser().parseFromString(svg, 'image/svg+xml');
-    assert(!parsed.querySelector('parsererror'), 'SVG is not valid XML');
-    assert(parsed.querySelectorAll('g[data-layer-index]').length === 3, 'Missing layer');
-    assert(parsed.querySelector('text')?.textContent?.includes('A < B & C'), 'Escaped text was lost');
-    assert(!parsed.querySelector('foreignObject'), 'Text still uses foreignObject');
-    const blob = new Blob([svg], {type:'image/svg+xml'}); await decode(blob);
-    const link = document.createElement('a'); link.href=URL.createObjectURL(blob); link.download='tinycut-browser-check.svg'; link.textContent='Download test SVG'; preview.append(link);
+  await check('print surface is a page-sized clipped SVG', () => {
+    const markup = printSurfaceInnerHtml(state);
+    const parsed = new DOMParser().parseFromString(markup, 'image/svg+xml');
+    assert(!parsed.querySelector('parsererror'), 'Print SVG is not valid XML');
+    assert(parsed.documentElement.getAttribute('width') === '80mm', 'Print width should be physical millimetres');
+    assert(parsed.documentElement.getAttribute('height') === '60mm', 'Print height should be physical millimetres');
+    assert(parsed.documentElement.getAttribute('overflow') === 'hidden', 'Print SVG must clip to the page');
+  });
+  await check('JPEG export matches page pixel size', async () => {
+    const blob = await exportDocumentAsRaster(state, { dpi: 300, format: 'jpeg' });
+    assert(blob.type === 'image/jpeg', 'Wrong JPEG type');
+    assert(blob.size > 100, 'JPEG was empty');
+    const bitmap = await createImageBitmap(blob);
+    assert(bitmap.width === Math.round(80*300/25.4) && bitmap.height === Math.round(60*300/25.4), 'JPEG size mismatch');
+    bitmap.close();
   });
   for (const dpi of [300,600,1200]) {
     await check(`PNG at ${dpi} DPI includes text and cropped/rotated images`, async () => {
-      const blob = await exportDocumentAsPng(state,dpi); const image = await decode(blob);
-      assert(image.naturalWidth === Math.round(80*dpi/25.4) && image.naturalHeight === Math.round(60*dpi/25.4), 'PNG size mismatch');
-      const read = document.createElement('canvas'); read.width=image.naturalWidth; read.height=image.naturalHeight;
-      const context = read.getContext('2d')!; context.drawImage(image,0,0);
+      const blob = await exportDocumentAsPng(state,dpi); const image = await createImageBitmap(blob);
+      assert(image.width === Math.round(80*dpi/25.4) && image.height === Math.round(60*dpi/25.4), 'PNG size mismatch');
+      const read = document.createElement('canvas'); read.width=image.width; read.height=image.height;
+      const context = read.getContext('2d')!; context.drawImage(image,0,0); image.close();
       const pixel=(x:number,y:number)=>context.getImageData(Math.round(x*dpi/25.4),Math.round(y*dpi/25.4),1,1).data;
       const blue=pixel(15,37), yellow=pixel(52.5,37.5);
       assert(blue[2] > 150 && blue[0] < 100,'Cropped PNG image missing or crop wrong');
@@ -73,6 +77,16 @@ async function check(name: string, run: () => Promise<void> | void) {
       if(dpi===300){const img=new Image();img.src=URL.createObjectURL(blob);img.alt='Verified PNG with multiline text and cropped, rotated images';preview.append(document.createElement('br'),img);}
     });
   }
+  await check('SVG is well-formed, layered, and contains native editable text', async () => {
+    const svg = exportDocumentAsSvg(state); const parsed = new DOMParser().parseFromString(svg, 'image/svg+xml');
+    assert(!parsed.querySelector('parsererror'), 'SVG is not valid XML');
+    assert(parsed.querySelectorAll('g[data-layer-index]').length === 3, 'Missing layer');
+    assert(parsed.querySelector('text')?.textContent?.includes('A < B & C'), 'Escaped text was lost');
+    assert(!parsed.querySelector('foreignObject'), 'Text still uses foreignObject');
+    assert(parsed.documentElement.getAttribute('overflow') === 'hidden', 'Page SVG must clip off-page artwork');
+    const blob = new Blob([svg], {type:'image/svg+xml'});
+    const link = document.createElement('a'); link.href=URL.createObjectURL(blob); link.download='tinycut-browser-check.svg'; link.textContent='Download test SVG'; preview.append(link);
+  });
   const failed=results.querySelectorAll('.fail').length;
   status.textContent=`${results.children.length-failed}/${results.children.length} browser checks passed${failed ? `; ${failed} failed` : ''}`;
 };

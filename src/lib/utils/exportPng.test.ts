@@ -14,6 +14,7 @@ test("reports exact physical PNG dimensions", () => {
 });
 
 test("rejects unsafe canvas allocations before rendering", () => {
+  assert.equal(getPngExportDimensions(a4, 150).supported, true);
   assert.equal(getPngExportDimensions(a4, 600).supported, true);
   assert.equal(getPngExportDimensions(a4, 1200).supported, false);
   assert.equal(getPngExportDimensions({ widthMm: 2_000, heightMm: 2_000 }, 300).supported, false);

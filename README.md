@@ -87,7 +87,7 @@ When you type values in the sidebar, you can switch between mm and cm display. I
 7. **Crop**: Click "Crop Image" and trim visually or enter the amount removed from each edge.
 8. **Arrange**: Shift-click items or layers for multi-selection; use the layer arrows or context menu for stacking.
 9. **Align**: Use "Center X" or "Center Y" in the inspector to center one item or an entire selection while preserving its internal layout.
-10. **Export/Print**: Open Export to download a layered SVG, choose a DPI and download PNG, or print / save as PDF. PNG defaults to 600 DPI and records the chosen physical print density.
+10. **Export/Print**: Open Export to download a layered SVG, a JPEG or PNG at a chosen DPI, or print / save as PDF. JPEG is the default for smaller files; PNG is lossless and records the chosen physical print density.
 
 ## Keyboard Shortcuts
 
@@ -110,7 +110,7 @@ When you type values in the sidebar, you can switch between mm and cm display. I
 
 ## Printing
 
-When you click Print, the app uses `@media print` CSS rules to hide the UI and show only the page at its physical dimensions. The browser's print dialog handles the rest. For PDF export, use your browser's "Save as PDF" option in the print dialog.
+When you click Print, the app prints a page-sized SVG of the layout (not the editor pasteboard), so off-page objects and zoom do not change the PDF. Choose the matching paper size and print at 100% scale with no margins or headers. For PDF export, use your browser's "Save as PDF" option in the print dialog.
 
 ## Export SVG
 

@@ -69,7 +69,7 @@
   class:ring-2={selected}
   class:ring-primary={selected}
   class:ring-offset-1={selected}
-  style="left: {pxX}px; top: {pxY}px; width: {pxW}px; height: {pxH}px; transform: rotate({item.rotationDeg}deg); transform-origin: center; z-index: {zIndex}; --item-x: {item.xMm}mm; --item-y: {item.yMm}mm; --item-w: {item.widthMm}mm; --item-h: {item.heightMm}mm; --font-size: {item.fontSizeMm}mm;"
+  style="left: {pxX}px; top: {pxY}px; width: {pxW}px; height: {pxH}px; transform: rotate({item.rotationDeg}deg); transform-origin: center; z-index: {zIndex};"
   role="figure"
   aria-label={item.name}
 >

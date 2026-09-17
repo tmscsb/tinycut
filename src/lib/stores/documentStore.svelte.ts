@@ -17,7 +17,7 @@ import {
 import { createId } from "../utils/ids.ts";
 import { loadImageFile } from "../utils/image.ts";
 import { confirmAction, showNotice, requestFitPage } from "./uiStore.svelte.ts";
-import { composeCrop, normalizeCrop } from "../utils/cropGeometry.ts";
+import { applyCropToImageFrame, composeCrop } from "../utils/cropGeometry.ts";
 import {
   getDocumentContentSnapshot,
   normalizeDocument,
@@ -148,8 +148,20 @@ export function getSelectedItem(): DocumentItem | null {
   return getItemById(doc.selectedItemId) ?? null;
 }
 
-function sameCrop(a: ImageCrop, b: ImageCrop): boolean {
-  return a.left === b.left && a.top === b.top && a.right === b.right && a.bottom === b.bottom;
+function sameImageFrame(
+  item: ImageItem,
+  next: Pick<ImageItem, "crop" | "xMm" | "yMm" | "widthMm" | "heightMm">,
+): boolean {
+  return (
+    item.xMm === next.xMm &&
+    item.yMm === next.yMm &&
+    item.widthMm === next.widthMm &&
+    item.heightMm === next.heightMm &&
+    item.crop.left === next.crop.left &&
+    item.crop.top === next.crop.top &&
+    item.crop.right === next.crop.right &&
+    item.crop.bottom === next.crop.bottom
+  );
 }
 
 function clampShapeAppearance(item: DocumentItem): void {
@@ -656,31 +668,31 @@ export function setLockedAspect(id: string, locked: boolean): void {
 export function setCrop(id: string, crop: ImageCrop): void {
   const item = getItemById(id);
   if (!item || item.type !== "image") return;
-  const next = normalizeCrop(crop);
-  if (sameCrop(item.crop, next)) return;
+  const next = applyCropToImageFrame(item, crop);
+  if (sameImageFrame(item, next)) return;
   pushUndo();
-  item.crop = next;
+  Object.assign(item, next);
   markDirty();
 }
 
 export function updateCrop(id: string, crop: ImageCrop): void {
   const item = getItemById(id);
   if (!item || item.type !== "image") return;
-  const next = normalizeCrop(crop);
-  if (sameCrop(item.crop, next)) return;
+  const next = applyCropToImageFrame(item, crop);
+  if (sameImageFrame(item, next)) return;
   commitPendingUndo();
-  item.crop = next;
+  Object.assign(item, next);
   markDirty();
 }
 
 export function resetCrop(id: string): void {
   const item = getItemById(id);
   if (!item || item.type !== "image") return;
-  const next = { left: 0, top: 0, right: 1, bottom: 1 };
-  if (sameCrop(item.crop, next)) return;
+  const next = applyCropToImageFrame(item, { left: 0, top: 0, right: 1, bottom: 1 });
+  if (sameImageFrame(item, next)) return;
   exitCropMode();
   pushUndo();
-  item.crop = next;
+  Object.assign(item, next);
   markDirty();
 }
 

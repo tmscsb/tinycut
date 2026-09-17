@@ -1,8 +1,13 @@
 import type { DocumentState, DocumentItem, ImageItem, ShapeItem, TextItem } from "../types/document.ts";
 import { layoutText } from "./textLayout.ts";
 
-export function exportDocumentAsSvg(state: DocumentState): string {
+export function exportDocumentAsSvg(
+  state: DocumentState,
+  options?: { width?: string; height?: string },
+): string {
   const { page, items } = state;
+  const width = options?.width ?? `${page.widthMm}mm`;
+  const height = options?.height ?? `${page.heightMm}mm`;
 
   let inner = "";
 
@@ -12,9 +17,10 @@ export function exportDocumentAsSvg(state: DocumentState): string {
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg
-  width="${page.widthMm}mm"
-  height="${page.heightMm}mm"
+  width="${width}"
+  height="${height}"
   viewBox="0 0 ${page.widthMm} ${page.heightMm}"
+  overflow="hidden"
   xmlns="http://www.w3.org/2000/svg"
   xmlns:xlink="http://www.w3.org/1999/xlink"
   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"

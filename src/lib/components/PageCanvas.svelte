@@ -1,6 +1,7 @@
 <script lang="ts">
   import { doc } from "../stores/documentStore.svelte.ts";
   import { mmToPx } from "../utils/units.ts";
+  import { setPrintPageSize } from "../utils/printDocument.ts";
   import ImageObject from "./ImageObject.svelte";
   import ShapeObject from "./ShapeObject.svelte";
   import TextObject from "./TextObject.svelte";
@@ -11,14 +12,7 @@
   const gridPx = $derived(mmToPx(doc.gridSizeMm, doc.zoom));
 
   $effect(() => {
-    const styleId = "trimkit-print-page-size";
-    let style = document.getElementById(styleId) as HTMLStyleElement | null;
-    if (!style) {
-      style = document.createElement("style");
-      style.id = styleId;
-      document.head.appendChild(style);
-    }
-    style.textContent = `@media print { @page { size: ${doc.page.widthMm}mm ${doc.page.heightMm}mm; margin: 0; } }`;
+    setPrintPageSize(doc.page.widthMm, doc.page.heightMm);
   });
 </script>
 

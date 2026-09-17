@@ -114,22 +114,47 @@ test('an edit during asynchronous import is never silently overwritten', async (
   assert.equal(doc.items.length, 1);
 });
 
-test('repeated crops use the visible image and keep its print dimensions', async () => {
+test('repeated crops use the visible image and shrink the print frame', async () => {
   const image = { id: 'image', type: 'image', name: 'Sample', src: 'data:image/png;base64,AA==',
     xMm: 20, yMm: 30, widthMm: 100, heightMm: 50, naturalWidthPx: 1000,
-    naturalHeightPx: 500, rotationDeg: 0, lockedAspectRatio: false,
+    naturalHeightPx: 500, rotationDeg: 0, lockedAspectRatio: true,
     crop: { left: 0, top: 0, right: 1, bottom: 1 } };
   await importJson(new File([JSON.stringify({ version: 2, page: doc.page, items: [image] })], 'crop.json'));
   enterCropMode('image');
   setCropRelativeToSession('image', { left: 0.2, top: 0, right: 1, bottom: 1 });
   exitCropMode();
+  assert.deepEqual((doc.items[0] as typeof image).crop, { left: 0.2, top: 0, right: 1, bottom: 1 });
+  assert.equal(doc.items[0].widthMm, 80);
+  assert.equal(doc.items[0].heightMm, 50);
+  assert.equal(doc.items[0].xMm, 40);
   enterCropMode('image');
   setCropRelativeToSession('image', { left: 0.25, top: 0, right: 1, bottom: 1 });
   assert.deepEqual((doc.items[0] as typeof image).crop, { left: 0.4, top: 0, right: 1, bottom: 1 });
-  assert.equal(doc.items[0].widthMm, 100);
+  assert.equal(doc.items[0].widthMm, 60);
   assert.equal(doc.items[0].heightMm, 50);
-  assert.equal(doc.items[0].xMm, 20);
+  assert.equal(doc.items[0].xMm, 60);
   resetCrop('image');
   assert.deepEqual((doc.items[0] as typeof image).crop, { left: 0, top: 0, right: 1, bottom: 1 });
   assert.equal(doc.items[0].widthMm, 100);
+  assert.equal(doc.items[0].heightMm, 50);
+  assert.equal(doc.items[0].xMm, 20);
+});
+
+test('cropping an enlarged image trims millimetres and can change aspect ratio', async () => {
+  const image = { id: 'image', type: 'image', name: 'Sample', src: 'data:image/png;base64,AA==',
+    xMm: 0, yMm: 0, widthMm: 80, heightMm: 40, naturalWidthPx: 800,
+    naturalHeightPx: 400, rotationDeg: 0, lockedAspectRatio: true,
+    crop: { left: 0, top: 0, right: 1, bottom: 1 } };
+  await importJson(new File([JSON.stringify({ version: 2, page: doc.page, items: [image] })], 'crop.json'));
+  setItemWidth('image', 160);
+  assert.equal(doc.items[0].widthMm, 160);
+  assert.equal(doc.items[0].heightMm, 80);
+  enterCropMode('image');
+  setCropRelativeToSession('image', { left: 0, top: 0, right: 0.5, bottom: 1 });
+  exitCropMode();
+  assert.equal(doc.items[0].widthMm, 80);
+  assert.equal(doc.items[0].heightMm, 80);
+  resetCrop('image');
+  assert.equal(doc.items[0].widthMm, 160);
+  assert.equal(doc.items[0].heightMm, 80);
 });

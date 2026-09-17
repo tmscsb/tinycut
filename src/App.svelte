@@ -37,6 +37,7 @@
   } from "./lib/stores/uiStore.svelte.ts";
   import { onMount } from "svelte";
   import { trapTabFocus } from "./lib/utils/focus.ts";
+  import { preparePrintSurface, removePrintSurface } from "./lib/utils/printDocument.ts";
 
   let unsavedDialog: HTMLDivElement | undefined = $state();
   let unsavedCancelButton: HTMLButtonElement | undefined = $state();
@@ -244,12 +245,24 @@
       }
     }
 
+    function onBeforePrint() {
+      preparePrintSurface(doc);
+    }
+    function onAfterPrint() {
+      removePrintSurface();
+    }
+
     window.addEventListener("keydown", handleKeydown);
     window.addEventListener("beforeunload", handleBeforeUnload);
+    window.addEventListener("beforeprint", onBeforePrint);
+    window.addEventListener("afterprint", onAfterPrint);
     return () => {
       window.removeEventListener("keydown", handleKeydown);
       window.removeEventListener("beforeunload", handleBeforeUnload);
+      window.removeEventListener("beforeprint", onBeforePrint);
+      window.removeEventListener("afterprint", onAfterPrint);
       compactLayoutQuery.removeEventListener("change", syncCompactLayout);
+      removePrintSurface();
     };
   });
 </script>
