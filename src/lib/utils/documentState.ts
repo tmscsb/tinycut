@@ -12,6 +12,7 @@ import {
   PAGE_TEMPLATES,
 } from "../types/document.ts";
 import { migrateLegacyCropGeometry, normalizeCrop } from "./cropGeometry.ts";
+import { createProjectId, isProjectId } from "./ids.ts";
 
 const SHAPE_TYPES = new Set<ShapeType>(["rect", "ellipse", "line"]);
 const FONT_FAMILIES = new Set([
@@ -182,8 +183,11 @@ export function normalizeDocument(value: unknown): DocumentState {
     throw new Error("Invalid project item type");
   });
 
+  const id = text(input.id, "");
   return {
     version: 2,
+    id: isProjectId(id) ? id : createProjectId(),
+    name: text(input.name, "Untitled").trim().slice(0, 80) || "Untitled",
     page: {
       templateId: template?.id ?? "custom",
       name: template?.name ?? text(page.name, "Custom").slice(0, 120),
@@ -206,6 +210,7 @@ export function normalizeDocument(value: unknown): DocumentState {
 
 export function getDocumentContentSnapshot(state: DocumentState): string {
   return JSON.stringify({
+    name: state.name,
     page: state.page,
     items: state.items,
     gridSizeMm: state.gridSizeMm,

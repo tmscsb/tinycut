@@ -7,7 +7,10 @@
     setItemX,
     setItemY,
     setLockedAspect,
+    cropSession,
     enterCropMode,
+    enterCutMode,
+    exitCropMode,
     resetCrop,
   } from "../stores/documentStore.svelte.ts";
   import { formatDisplay, parseInputToMm } from "../utils/units.ts";
@@ -125,11 +128,26 @@
 
   <RotationControl id={item.id} rotationDeg={item.rotationDeg} />
 
-  <!-- Crop -->
+  <!-- Crop & Cut -->
   <div class="pt-3 border-t border-base-300">
-    <h4 class="text-xs font-medium text-base-content/65 uppercase tracking-wide mb-2">Crop</h4>
+    <h4 class="text-xs font-medium text-base-content/65 uppercase tracking-wide mb-2">Crop & Cut</h4>
     <div class="space-y-2">
-      {#if doc.cropModeItemId === item.id}
+      {#if doc.cropModeItemId === item.id && cropSession.mode === "cut"}
+        <button
+          type="submit"
+          form={`crop-form-${item.id}`}
+          class="btn btn-sm btn-accent w-full"
+        >
+          Cut Piece
+        </button>
+        <button
+          type="button"
+          class="btn btn-sm btn-outline w-full"
+          onclick={() => exitCropMode()}
+        >
+          Done
+        </button>
+      {:else if doc.cropModeItemId === item.id}
         <button
           type="submit"
           form={`crop-form-${item.id}`}
@@ -143,6 +161,12 @@
           onclick={() => enterCropMode(item.id)}
         >
           Crop Image
+        </button>
+        <button
+          class="btn btn-sm btn-outline w-full"
+          onclick={() => enterCutMode(item.id)}
+        >
+          Cut from Image
         </button>
       {/if}
 

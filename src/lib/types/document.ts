@@ -78,6 +78,8 @@ export type Page = {
 
 export type DocumentState = {
   version: 2;
+  id: string;
+  name: string;
   page: Page;
   items: DocumentItem[];
   selectedItemId: string | null;

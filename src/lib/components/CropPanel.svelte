@@ -1,7 +1,12 @@
 <script lang="ts">
   import type { ImageItem, ImageCrop } from "../types/document.ts";
-  import { cropSession, setCropRelativeToSession, exitCropMode } from "../stores/documentStore.svelte.ts";
-  import { cropRelativeTo } from "../utils/cropGeometry.ts";
+  import {
+    cropSession,
+    getSessionLocalCrop,
+    setCropRelativeToSession,
+    applyCutFromSession,
+    exitCropMode,
+  } from "../stores/documentStore.svelte.ts";
 
   let { item }: { item: ImageItem } = $props();
 
@@ -11,11 +16,10 @@
   let cropBottom = $state("");
 
   let lastAppliedCrop = $state<ImageCrop | null>(null);
+  const isCut = $derived(cropSession.mode === "cut");
 
   $effect(() => {
-    const c = cropSession.itemId === item.id && cropSession.base
-      ? cropRelativeTo(cropSession.base.crop, item.crop)
-      : item.crop;
+    const c = getSessionLocalCrop(item);
     if (!lastAppliedCrop || lastAppliedCrop.left !== c.left || lastAppliedCrop.top !== c.top || lastAppliedCrop.right !== c.right || lastAppliedCrop.bottom !== c.bottom) {
       cropLeft = String((c.left * 100).toFixed(1));
       cropTop = String((c.top * 100).toFixed(1));
@@ -25,7 +29,7 @@
     }
   });
 
-  function applyCrop() {
+  function applyRegion() {
     let left = parseFloat(cropLeft) / 100;
     let top = parseFloat(cropTop) / 100;
     let right = 1 - parseFloat(cropRight) / 100;
@@ -40,12 +44,16 @@
 
     const crop: ImageCrop = { left, top, right, bottom };
     lastAppliedCrop = { ...crop };
+    if (cropSession.mode === "cut") {
+      applyCutFromSession(item.id, crop);
+      return;
+    }
     setCropRelativeToSession(item.id, crop);
     exitCropMode();
   }
 </script>
 
-<form id={`crop-form-${item.id}`} class="crop-panel-form space-y-3" novalidate onsubmit={(event) => { event.preventDefault(); applyCrop(); }}>
+<form id={`crop-form-${item.id}`} class="crop-panel-form space-y-3" novalidate onsubmit={(event) => { event.preventDefault(); applyRegion(); }}>
   <h4 class="text-xs font-medium text-base-content/65 uppercase tracking-wide">Trim from edge (%)</h4>
 
   <div class="grid grid-cols-2 gap-2">
@@ -96,9 +104,11 @@
 
   <button
     type="submit"
-    class="btn btn-sm btn-warning w-full"
+    class="btn btn-sm w-full {isCut ? 'btn-accent' : 'btn-warning'}"
   >
-    Apply Crop
+    {isCut ? "Cut Piece" : "Apply Crop"}
   </button>
-  <p class="text-xs text-base-content/60 text-center">Press Enter to apply the crop.</p>
+  <p class="text-xs text-base-content/60 text-center">
+    {isCut ? "Press Enter to cut a piece. The original stays so you can cut more." : "Press Enter to apply the crop."}
+  </p>
 </form>

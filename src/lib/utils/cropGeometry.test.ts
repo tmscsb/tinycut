@@ -4,6 +4,7 @@ import type { DocumentState, ImageItem } from "../types/document.ts";
 import {
   applyCropToImageFrame,
   composeCrop,
+  cutRegionFromImage,
   getImageCropTransformOrigin,
   getImageSourceFrame,
   migrateLegacyCropGeometry,
@@ -44,6 +45,27 @@ test("a further crop cannot reveal pixels outside the current crop", () => {
   assert.ok(next.left >= base.left && next.right <= base.right);
   assert.ok(next.top >= base.top && next.bottom <= base.bottom);
   assert.ok(next.right > next.left && next.bottom > next.top);
+});
+
+test("cutting a visible region matches a crop of that region and leaves the source unchanged", () => {
+  const original = image();
+  const frame = cutRegionFromImage(original, { left: 0.2, top: 0.1, right: 0.8, bottom: 0.9 });
+  const cropped = { ...original, ...applyCropToImageFrame(original, { left: 0.2, top: 0.1, right: 0.8, bottom: 0.9 }) };
+  assert.deepEqual(frame, {
+    crop: cropped.crop,
+    xMm: cropped.xMm,
+    yMm: cropped.yMm,
+    widthMm: cropped.widthMm,
+    heightMm: cropped.heightMm,
+  });
+  assert.deepEqual(original.crop, { left: 0, top: 0, right: 1, bottom: 1 });
+  assert.equal(original.widthMm, 100);
+
+  const alreadyCropped = { ...original, ...applyCropToImageFrame(original, { left: 0.25, top: 0, right: 1, bottom: 1 }) };
+  const fromVisible = cutRegionFromImage(alreadyCropped, { left: 0.2, top: 0, right: 1, bottom: 1 });
+  const composed = applyCropToImageFrame(alreadyCropped, composeCrop(alreadyCropped.crop, { left: 0.2, top: 0, right: 1, bottom: 1 }));
+  assert.deepEqual(fromVisible, composed);
+  assert.equal(alreadyCropped.widthMm, 75);
 });
 
 test("crop updates visible geometry while retaining a stable source frame", () => {
@@ -109,6 +131,8 @@ test("SVG export uses the visible crop frame exactly once", () => {
   const cropped = image({ xMm: 35, yMm: 30, widthMm: 50, heightMm: 30, crop: { left: 0.25, top: 0.2, right: 0.75, bottom: 0.8 } });
   const state = {
     version: 2,
+    id: "test-doc-1",
+    name: "Untitled",
     page: { templateId: "custom", name: "Custom", widthMm: 210, heightMm: 297 },
     items: [cropped],
     selectedItemId: null,
@@ -136,6 +160,8 @@ test("SVG export uses the visible crop frame exactly once", () => {
 test("SVG export includes every image in document layer order", () => {
   const state = {
     version: 2,
+    id: "test-doc-1",
+    name: "Untitled",
     page: { templateId: "custom", name: "Custom", widthMm: 100, heightMm: 100 },
     items: [
       image({ id: "back", name: "Back & base", src: "data:image/png;base64,AAAA" }),
@@ -163,6 +189,8 @@ test("SVG export includes every image in document layer order", () => {
 test("SVG export preserves rotation and escapes text", () => {
   const state = {
     version: 2,
+    id: "test-doc-1",
+    name: "Untitled",
     page: { templateId: "custom", name: "Custom", widthMm: 100, heightMm: 100 },
     items: [{
       id: "text-1",

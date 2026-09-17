@@ -11,10 +11,19 @@
   } from "../stores/documentStore.svelte.ts";
   import { ui, showContextMenu, showNotice } from "../stores/uiStore.svelte.ts";
   import { mmToPx, pxToMm } from "../utils/units.ts";
+  import {
+    addPadding,
+    expansionForScroll,
+    INITIAL_CANVAS_PADDING_PX,
+    needsExpansion,
+    paddingCss,
+    type CanvasPadding,
+  } from "../utils/canvasExpansion.ts";
   import PageCanvas from "./PageCanvas.svelte";
   import { onMount } from "svelte";
 
   let workspaceEl: HTMLDivElement | undefined = $state();
+  let stageEl: HTMLDivElement | undefined = $state();
 
   let dragging = $state(false);
   let dragItemId = $state<string | null>(null);
@@ -27,7 +36,12 @@
 
   let panning = $state(false);
   let spaceHeld = $state(false);
-  let canvasMarginPx = $state(1000);
+  let canvasPad = $state<CanvasPadding>({
+    top: INITIAL_CANVAS_PADDING_PX,
+    right: INITIAL_CANVAS_PADDING_PX,
+    bottom: INITIAL_CANVAS_PADDING_PX,
+    left: INITIAL_CANVAS_PADDING_PX,
+  });
   let expandingCanvas = false;
   let panStart = $state({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
 
@@ -56,11 +70,58 @@
     );
     setZoom(Math.floor(zoom * 100) / 100);
     lastFitZoom = doc.zoom;
-    requestAnimationFrame(() => {
-      if (!workspaceEl) return;
+    requestAnimationFrame(() => centerPageInView());
+  }
+
+  function centerPageInView() {
+    if (!workspaceEl) return;
+    const pageEl = workspaceEl.querySelector<HTMLElement>(".print-page");
+    if (!pageEl) {
       workspaceEl.scrollLeft = Math.max(0, (workspaceEl.scrollWidth - workspaceEl.clientWidth) / 2);
       workspaceEl.scrollTop = Math.max(0, (workspaceEl.scrollHeight - workspaceEl.clientHeight) / 2);
-    });
+      return;
+    }
+    const view = workspaceEl.getBoundingClientRect();
+    const page = pageEl.getBoundingClientRect();
+    workspaceEl.scrollLeft += page.left + page.width / 2 - (view.left + view.width / 2);
+    workspaceEl.scrollTop += page.top + page.height / 2 - (view.top + view.height / 2);
+  }
+
+  function applyCanvasPadding(next: CanvasPadding) {
+    canvasPad = next;
+    if (!stageEl) return;
+    stageEl.style.padding = paddingCss(next);
+    void stageEl.offsetHeight;
+  }
+
+  function ensureCanvasRoom(): boolean {
+    if (!workspaceEl || expandingCanvas) return false;
+    expandingCanvas = true;
+    let expanded = false;
+    try {
+      for (let i = 0; i < 8; i++) {
+        const delta = expansionForScroll({
+          scrollLeft: workspaceEl.scrollLeft,
+          scrollTop: workspaceEl.scrollTop,
+          scrollWidth: workspaceEl.scrollWidth,
+          scrollHeight: workspaceEl.scrollHeight,
+          clientWidth: workspaceEl.clientWidth,
+          clientHeight: workspaceEl.clientHeight,
+        });
+        if (!needsExpansion(delta)) break;
+        applyCanvasPadding(addPadding(canvasPad, delta));
+        workspaceEl.scrollLeft += delta.left;
+        workspaceEl.scrollTop += delta.top;
+        panStart.scrollLeft += delta.left;
+        panStart.scrollTop += delta.top;
+        dragStartScroll.x += delta.left;
+        dragStartScroll.y += delta.top;
+        expanded = true;
+      }
+    } finally {
+      expandingCanvas = false;
+    }
+    return expanded;
   }
 
   $effect(() => {
@@ -128,6 +189,10 @@
       if (workspaceEl) {
         workspaceEl.scrollLeft = panStart.scrollLeft - (e.clientX - panStart.x);
         workspaceEl.scrollTop = panStart.scrollTop - (e.clientY - panStart.y);
+        if (ensureCanvasRoom()) {
+          workspaceEl.scrollLeft = panStart.scrollLeft - (e.clientX - panStart.x);
+          workspaceEl.scrollTop = panStart.scrollTop - (e.clientY - panStart.y);
+        }
       }
       return;
     }
@@ -162,6 +227,7 @@
     if (dx || dy) {
       workspaceEl.scrollLeft += dx;
       workspaceEl.scrollTop += dy;
+      ensureCanvasRoom();
       moveDraggedItems();
       autoScrollFrame = requestAnimationFrame(autoScrollWhileDragging);
     }
@@ -184,8 +250,14 @@
   }
 
   function handleWheel(e: WheelEvent) {
-    if (!workspaceEl || (!e.ctrlKey && !e.metaKey) || e.deltaY === 0) return;
+    if (!workspaceEl) return;
 
+    if (!e.ctrlKey && !e.metaKey) {
+      ensureCanvasRoom();
+      return;
+    }
+
+    if (e.deltaY === 0) return;
     e.preventDefault();
 
     const pageEl = workspaceEl.querySelector<HTMLElement>(".print-page");
@@ -207,24 +279,12 @@
       const nextBounds = pageEl.getBoundingClientRect();
       workspaceEl.scrollLeft += nextBounds.left + anchor.x * nextBounds.width - pointer.x;
       workspaceEl.scrollTop += nextBounds.top + anchor.y * nextBounds.height - pointer.y;
+      ensureCanvasRoom();
     });
   }
 
   function handleScroll() {
-    if (!workspaceEl || expandingCanvas) return;
-    const nearEdge = workspaceEl.scrollLeft < 250 || workspaceEl.scrollTop < 250
-      || workspaceEl.scrollWidth - workspaceEl.clientWidth - workspaceEl.scrollLeft < 250
-      || workspaceEl.scrollHeight - workspaceEl.clientHeight - workspaceEl.scrollTop < 250;
-    if (!nearEdge) return;
-    expandingCanvas = true;
-    canvasMarginPx += 800;
-    requestAnimationFrame(() => {
-      if (workspaceEl) {
-        workspaceEl.scrollLeft += 800;
-        workspaceEl.scrollTop += 800;
-      }
-      expandingCanvas = false;
-    });
+    ensureCanvasRoom();
   }
 
   function handleKeyDown(e: KeyboardEvent) {
@@ -316,7 +376,7 @@
   ondrop={handleDrop}
   oncontextmenu={handleContextMenu}
 >
-  <div class="workspace-stage min-h-full flex items-start justify-center" style="--canvas-margin: {canvasMarginPx}px">
+  <div class="workspace-stage min-h-full flex items-start justify-center" bind:this={stageEl} style="padding: {paddingCss(canvasPad)}">
     <PageCanvas />
   </div>
 

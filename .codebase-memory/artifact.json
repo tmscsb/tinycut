@@ -1,11 +1,11 @@
 {
     "schema_version": 2,
-    "commit": "8b62ec30069f6897206bfd23a64cbc8752bff4ae",
-    "indexed_at": "2026-09-17T10:50:50Z",
+    "commit": "fdf073e5e7b259833683e2020314f086fe6519a7",
+    "indexed_at": "2026-09-17T18:42:27Z",
     "project": "home-tmscsb-personal-simple-layout-studio",
-    "nodes": 505,
-    "edges": 1438,
-    "original_size": 3407872,
-    "compressed_size": 401161,
+    "nodes": 0,
+    "edges": 0,
+    "original_size": 102400,
+    "compressed_size": 1468,
     "compression_level": 3
 }

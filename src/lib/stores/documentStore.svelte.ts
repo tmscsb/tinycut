@@ -8,16 +8,31 @@ import {
   type ImageCrop,
   type Unit,
   PAGE_TEMPLATES,
-  LOCAL_STORAGE_KEY,
   MIN_SIZE_MM,
   MAX_PAGE_SIZE_MM,
   MAX_PROJECT_FILE_BYTES,
   MAX_DOCUMENT_ITEMS,
 } from "../types/document.ts";
-import { createId } from "../utils/ids.ts";
+import { createId, createProjectId } from "../utils/ids.ts";
 import { loadImageFile } from "../utils/image.ts";
-import { confirmAction, showNotice, requestFitPage } from "./uiStore.svelte.ts";
-import { applyCropToImageFrame, composeCrop } from "../utils/cropGeometry.ts";
+import { confirmAction, showNotice, requestFitPage, showOpenProjects } from "./uiStore.svelte.ts";
+import {
+  deleteStoredProject,
+  listStoredProjects,
+  migrateLegacyLocalStorage,
+  ProjectNotFoundError,
+  readStoredProject,
+  writeStoredProject,
+  type StoredProjectMeta,
+} from "../utils/projectStorage.ts";
+import { readProjectIdFromLocation, writeProjectIdToLocation } from "../utils/projectUrl.ts";
+import {
+  applyCropToImageFrame,
+  composeCrop,
+  cropRelativeTo,
+  cutRegionFromImage,
+  normalizeCrop,
+} from "../utils/cropGeometry.ts";
 import {
   getDocumentContentSnapshot,
   normalizeDocument,
@@ -26,10 +41,12 @@ import {
 } from "../utils/documentState.ts";
 import { getGroupCenteringDelta } from "../utils/resizeGeometry.ts";
 
-function defaultDoc(): DocumentState {
+function defaultDoc(id = createProjectId()): DocumentState {
   const tpl = PAGE_TEMPLATES[0];
   return {
     version: 2,
+    id,
+    name: "Untitled",
     page: { templateId: tpl.id, name: tpl.name, widthMm: tpl.widthMm, heightMm: tpl.heightMm },
     items: [],
     selectedItemId: null,
@@ -46,8 +63,15 @@ function defaultDoc(): DocumentState {
 }
 
 export const doc = $state<DocumentState>(defaultDoc());
+export type RegionEditMode = "crop" | "cut";
 type CropSessionBase = Pick<ImageItem, "xMm" | "yMm" | "widthMm" | "heightMm" | "crop">;
-export const cropSession = $state<{ itemId: string | null; base: CropSessionBase | null }>({ itemId: null, base: null });
+const FULL_LOCAL_CROP: ImageCrop = { left: 0, top: 0, right: 1, bottom: 1 };
+export const cropSession = $state<{
+  itemId: string | null;
+  base: CropSessionBase | null;
+  mode: RegionEditMode;
+  localCrop: ImageCrop | null;
+}>({ itemId: null, base: null, mode: "crop", localCrop: null });
 
 // ── Undo / Redo ──────────────────────────────────────────────────────
 
@@ -59,6 +83,7 @@ let textEditItemId: string | null = null;
 let cleanContentSnapshot = getDocumentContentSnapshot(doc);
 
 export const undoState = $state({ hasUndo: false, hasRedo: false });
+export const persistState = $state({ saving: false, lastSavedAt: 0 });
 
 function syncUndoFlags(): void {
   undoState.hasUndo = undoStack.length > 0;
@@ -175,15 +200,17 @@ function clampShapeAppearance(item: DocumentItem): void {
 
 // ── Document ──────────────────────────────────────────────────────────
 
-export function createNewDocument(templateId: string): void {
+export function createNewDocument(templateId: string, id = createProjectId()): void {
   const tpl = PAGE_TEMPLATES.find((t) => t.id === templateId);
-  if (tpl) {
-    Object.assign(doc, defaultDoc());
-    doc.page = { templateId: tpl.id, name: tpl.name, widthMm: tpl.widthMm, heightMm: tpl.heightMm };
-    clearHistory();
-    markClean();
-    requestFitPage();
-  }
+  if (!tpl) return;
+  const next = defaultDoc(id);
+  next.page = { templateId: tpl.id, name: tpl.name, widthMm: tpl.widthMm, heightMm: tpl.heightMm };
+  applyDocument(next);
+  persistState.lastSavedAt = 0;
+  clearHistory();
+  markClean();
+  writeProjectIdToLocation(doc.id, "replace");
+  requestFitPage();
 }
 
 export function requestNewDocument(templateId: string): void {
@@ -696,20 +723,52 @@ export function resetCrop(id: string): void {
   markDirty();
 }
 
-export function enterCropMode(id: string | null): void {
+function beginRegionMode(id: string | null, mode: RegionEditMode): void {
   const item = id ? getItemById(id) : null;
-  cropSession.itemId = item?.type === "image" ? item.id : null;
-  cropSession.base = item?.type === "image" ? {
-    xMm: item.xMm, yMm: item.yMm, widthMm: item.widthMm, heightMm: item.heightMm,
-    crop: { ...item.crop },
+  const image = item?.type === "image" ? item : null;
+  cropSession.itemId = image?.id ?? null;
+  cropSession.base = image ? {
+    xMm: image.xMm,
+    yMm: image.yMm,
+    widthMm: image.widthMm,
+    heightMm: image.heightMm,
+    crop: { ...image.crop },
   } : null;
+  cropSession.mode = mode;
+  cropSession.localCrop = image ? { ...FULL_LOCAL_CROP } : null;
   doc.cropModeItemId = cropSession.itemId;
+}
+
+export function enterCropMode(id: string | null): void {
+  beginRegionMode(id, "crop");
+}
+
+export function enterCutMode(id: string | null): void {
+  beginRegionMode(id, "cut");
 }
 
 export function exitCropMode(): void {
   doc.cropModeItemId = null;
   cropSession.itemId = null;
   cropSession.base = null;
+  cropSession.mode = "crop";
+  cropSession.localCrop = null;
+}
+
+export function getSessionLocalCrop(item: ImageItem): ImageCrop {
+  if (cropSession.itemId !== item.id) return { ...FULL_LOCAL_CROP };
+  if (cropSession.mode === "cut") return cropSession.localCrop ?? { ...FULL_LOCAL_CROP };
+  if (cropSession.base) return cropRelativeTo(cropSession.base.crop, item.crop);
+  return { ...FULL_LOCAL_CROP };
+}
+
+export function updateSessionLocalCrop(id: string, crop: ImageCrop): void {
+  if (cropSession.itemId !== id) return;
+  if (cropSession.mode === "cut") {
+    cropSession.localCrop = normalizeCrop(crop);
+    return;
+  }
+  updateCropRelativeToSession(id, crop);
 }
 
 export function setCropRelativeToSession(id: string, crop: ImageCrop): void {
@@ -720,6 +779,36 @@ export function setCropRelativeToSession(id: string, crop: ImageCrop): void {
 export function updateCropRelativeToSession(id: string, crop: ImageCrop): void {
   const base = cropSession.itemId === id ? cropSession.base : null;
   if (base) updateCrop(id, composeCrop(base.crop, crop));
+}
+
+export function applyCutFromSession(id: string, localCrop?: ImageCrop): void {
+  const item = getItemById(id);
+  if (!item || item.type !== "image") return;
+  if (doc.items.length >= MAX_DOCUMENT_ITEMS) {
+    showNotice("Projects can contain up to 1,000 items.", "error");
+    return;
+  }
+  const local = normalizeCrop(
+    localCrop
+      ?? (cropSession.itemId === id ? cropSession.localCrop : null)
+      ?? FULL_LOCAL_CROP,
+  );
+  if (cropSession.itemId === id) cropSession.localCrop = local;
+  const frame = cutRegionFromImage(item, local);
+  const cut: ImageItem = {
+    ...item,
+    ...frame,
+    id: createId("img"),
+    name: `${item.name} cut`,
+    crop: { ...frame.crop },
+    xMm: frame.xMm + 10,
+    yMm: frame.yMm + 10,
+  };
+  pushUndo();
+  doc.items.push(cut);
+  doc.selectedItemId = item.id;
+  doc.selectedItemIds = [item.id];
+  markDirty();
 }
 
 // ── Zoom / Unit ───────────────────────────────────────────────────────
@@ -735,41 +824,109 @@ export function setUnit(unit: Unit): void {
 
 // ── Persistence ───────────────────────────────────────────────────────
 
-export function saveToLocalStorage(): void {
-  endTextEdit();
+export async function bootDocument(): Promise<void> {
+  let recovered = false;
   try {
-    const data = serializeDocument(doc);
-    localStorage.setItem(LOCAL_STORAGE_KEY, data);
-    markClean();
-    showNotice("Project saved in this browser", "success");
+    recovered = Boolean(await migrateLegacyLocalStorage());
   } catch {
-    showNotice("Browser storage is unavailable or full. Download a project JSON from the Project menu to keep your work.", "error");
+    recovered = false;
+  }
+  const fromUrl = readProjectIdFromLocation();
+  if (fromUrl) {
+    const loaded = await openProject(fromUrl, false);
+    if (!loaded) createNewDocument("a4-portrait", fromUrl);
+  } else {
+    createNewDocument("a4-portrait");
+  }
+  if (recovered) {
+    showNotice("A layout from an older TinyCut version is in Project → Open.", "info");
   }
 }
 
-export function loadFromLocalStorage(showFeedback = true): boolean {
+export async function saveProject(): Promise<void> {
+  endTextEdit();
+  if (persistState.saving) return;
+  persistState.saving = true;
+  const snapshot = getDocumentContentSnapshot(doc);
   try {
-    const data = localStorage.getItem(LOCAL_STORAGE_KEY);
-    if (!data) {
-      if (showFeedback) showNotice("No saved project was found", "info");
-      return false;
+    try {
+      if (typeof navigator !== "undefined") await navigator.storage?.persist?.();
+    } catch {
+      // Persistence permission is optional.
     }
-    const parsed = normalizeDocument(JSON.parse(data));
-    Object.assign(doc, parsed);
+    const meta = await writeStoredProject(doc);
+    persistState.lastSavedAt = meta.updatedAt;
+    if (getDocumentContentSnapshot(doc) === snapshot) markClean();
+    writeProjectIdToLocation(doc.id, "replace");
+    showNotice("Saved in this browser", "success");
+  } catch {
+    showNotice("Could not save in this browser. Download a project JSON from the Project menu to keep your work.", "error");
+  } finally {
+    persistState.saving = false;
+  }
+}
+
+export async function openProject(id: string, showFeedback = true): Promise<boolean> {
+  try {
+    const parsed = await readStoredProject(id);
+    applyDocument(parsed);
+    persistState.lastSavedAt = Date.now();
     clearHistory();
     markClean();
-    if (showFeedback) showNotice("Saved project loaded", "success");
+    writeProjectIdToLocation(doc.id, "replace");
+    if (showFeedback) showNotice("Layout opened", "success");
     requestFitPage();
     return true;
-  } catch {
-    if (showFeedback) showNotice("The saved project is invalid or unreadable", "error");
+  } catch (error) {
+    if (error instanceof ProjectNotFoundError) {
+      if (showFeedback) showNotice("That layout was not found in this browser", "info");
+      return false;
+    }
+    if (showFeedback) showNotice("The saved layout is invalid or unreadable", "error");
     return false;
   }
 }
 
-export function requestLoadFromLocalStorage(): void {
-  if (doc.dirty) confirmAction(() => loadFromLocalStorage());
-  else loadFromLocalStorage();
+export function requestOpenProject(id: string): void {
+  const action = () => { void openProject(id); };
+  if (doc.dirty) confirmAction(action);
+  else action();
+}
+
+export function requestOpenProjects(): void {
+  showOpenProjects();
+}
+
+export function requestLoadFromHash(): void {
+  const id = readProjectIdFromLocation();
+  if (id === doc.id) return;
+  if (!id) {
+    writeProjectIdToLocation(doc.id, "replace");
+    return;
+  }
+  writeProjectIdToLocation(doc.id, "replace");
+  requestOpenProject(id);
+}
+
+export async function listProjects(): Promise<StoredProjectMeta[]> {
+  return listStoredProjects();
+}
+
+export async function deleteProject(id: string): Promise<void> {
+  await deleteStoredProject(id);
+  if (doc.id === id) createNewDocument("a4-portrait");
+  showNotice("Layout deleted from this browser", "success");
+}
+
+export function setProjectName(name: string): void {
+  const next = name.trim().slice(0, 80) || "Untitled";
+  if (doc.name === next) {
+    refreshDirty();
+    return;
+  }
+  pushUndo();
+  doc.name = next;
+  markDirty();
 }
 
 export function exportJson(): string {
@@ -781,12 +938,22 @@ export async function importJson(file: File): Promise<void> {
   const before = getDocumentContentSnapshot(doc);
   const text = await file.text();
   const parsed = normalizeDocument(JSON.parse(text));
+  parsed.id = createProjectId();
   if (getDocumentContentSnapshot(doc) !== before) throw new Error("The document changed while importing. Please open the project again.");
-  Object.assign(doc, parsed);
+  applyDocument(parsed);
+  persistState.lastSavedAt = 0;
   clearHistory();
-  markClean();
+  writeProjectIdToLocation(doc.id, "replace");
   requestFitPage();
-  showNotice("Project imported", "success");
+  try {
+    const meta = await writeStoredProject(doc);
+    persistState.lastSavedAt = meta.updatedAt;
+    markClean();
+    showNotice("Project imported", "success");
+  } catch {
+    markDirty();
+    showNotice("Project opened, but it could not be saved in this browser. Download a JSON backup to keep it.", "error");
+  }
 }
 
 export function requestImportJson(file: File): void {
@@ -795,6 +962,24 @@ export function requestImportJson(file: File): void {
   };
   if (doc.dirty) confirmAction(action);
   else action();
+}
+
+function applyDocument(next: DocumentState): void {
+  doc.id = next.id;
+  doc.name = next.name;
+  doc.version = next.version;
+  doc.page = next.page;
+  doc.items = next.items;
+  doc.selectedItemId = next.selectedItemId;
+  doc.selectedItemIds = next.selectedItemIds;
+  doc.zoom = next.zoom;
+  doc.unit = next.unit;
+  doc.gridSizeMm = next.gridSizeMm;
+  doc.showGrid = next.showGrid;
+  doc.snapToGrid = next.snapToGrid;
+  doc.showGuides = next.showGuides;
+  doc.cropModeItemId = next.cropModeItemId;
+  doc.dirty = next.dirty;
 }
 
 function clearHistory(): void {

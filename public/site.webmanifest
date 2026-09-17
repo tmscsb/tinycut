@@ -1,0 +1,31 @@
+{
+  "name": "TinyCut",
+  "short_name": "TinyCut",
+  "description": "Free print layout editor in your browser. Crop and size images in millimeters, then export SVG, JPEG, PNG, or PDF. No account — files stay on your device.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#111827",
+  "theme_color": "#111827",
+  "lang": "en",
+  "icons": [
+    {
+      "src": "/tinycut-icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any"
+    }
+  ]
+}

@@ -4,12 +4,17 @@
   import PropertiesPanel from "./lib/components/PropertiesPanel.svelte";
   import ShortcutsModal from "./lib/components/ShortcutsModal.svelte";
   import ContextMenu from "./lib/components/ContextMenu.svelte";
+  import OpenProjectsModal from "./lib/components/OpenProjectsModal.svelte";
   import {
     doc,
-    loadFromLocalStorage,
-    saveToLocalStorage,
+    bootDocument,
+    saveProject,
+    requestLoadFromHash,
+    requestOpenProjects,
     deleteSelectedItem,
     duplicateSelectedItem,
+    enterCropMode,
+    enterCutMode,
     exitCropMode,
     selectItem,
     nudgeItem,
@@ -61,8 +66,7 @@
 
   onMount(() => {
     initTheme();
-    loadFromLocalStorage(false);
-    requestFitPage();
+    void bootDocument();
     const compactLayoutQuery = window.matchMedia("(max-width: 640px)");
     const syncCompactLayout = () => setCompactLayout(compactLayoutQuery.matches);
     syncCompactLayout();
@@ -93,6 +97,7 @@
         }
         return;
       }
+      if (ui.showOpenProjects) return;
       if (ui.contextMenu) {
         if (e.key === "Escape") {
           e.preventDefault();
@@ -105,7 +110,12 @@
         e.preventDefault();
         // Commit any pending numeric field before taking the saved snapshot.
         (document.activeElement as HTMLElement | null)?.blur();
-        queueMicrotask(saveToLocalStorage);
+        queueMicrotask(() => { void saveProject(); });
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "o") {
+        e.preventDefault();
+        requestOpenProjects();
         return;
       }
       if (ui.compactLayout && ui.mobilePanelOpen) {
@@ -210,6 +220,22 @@
       if (
         !mod &&
         !e.altKey &&
+        (e.key.toLowerCase() === "c" || e.key.toLowerCase() === "x") &&
+        doc.selectedItemId &&
+        !doc.cropModeItemId
+      ) {
+        const item = getItem(doc.selectedItemId);
+        if (item?.type === "image") {
+          e.preventDefault();
+          if (e.key.toLowerCase() === "x") enterCutMode(item.id);
+          else enterCropMode(item.id);
+        }
+        return;
+      }
+
+      if (
+        !mod &&
+        !e.altKey &&
         e.key.toLowerCase() === "r" &&
         doc.selectedItemId &&
         !doc.cropModeItemId
@@ -253,11 +279,13 @@
     }
 
     window.addEventListener("keydown", handleKeydown);
+    window.addEventListener("hashchange", requestLoadFromHash);
     window.addEventListener("beforeunload", handleBeforeUnload);
     window.addEventListener("beforeprint", onBeforePrint);
     window.addEventListener("afterprint", onAfterPrint);
     return () => {
       window.removeEventListener("keydown", handleKeydown);
+      window.removeEventListener("hashchange", requestLoadFromHash);
       window.removeEventListener("beforeunload", handleBeforeUnload);
       window.removeEventListener("beforeprint", onBeforePrint);
       window.removeEventListener("afterprint", onAfterPrint);
@@ -293,6 +321,7 @@
 {/if}
 
 <ShortcutsModal />
+<OpenProjectsModal />
 
 {#if ui.contextMenu}
   {@const ctxItem = getItem(ui.contextMenu.itemId)}

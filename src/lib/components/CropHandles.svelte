@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { ImageItem, ImageCrop } from "../types/document.ts";
-  import { cropSession, updateCropRelativeToSession, beginUndo, endUndo } from "../stores/documentStore.svelte.ts";
-  import { cropRelativeTo, screenDeltaToLocalCropPercent } from "../utils/cropGeometry.ts";
+  import { cropSession, getSessionLocalCrop, updateSessionLocalCrop, beginUndo, endUndo } from "../stores/documentStore.svelte.ts";
+  import { screenDeltaToLocalCropPercent } from "../utils/cropGeometry.ts";
 
   let { item, pxW, pxH }: {
     item: ImageItem;
@@ -17,7 +17,7 @@
   function startDrag(e: PointerEvent, handle: string) {
     e.stopPropagation();
     e.preventDefault();
-    beginUndo();
+    if (cropSession.mode !== "cut") beginUndo();
     dragging = true;
     handleId = handle;
     dragStartPx = { x: e.clientX, y: e.clientY };
@@ -60,7 +60,7 @@
       }
     }
 
-    updateCropRelativeToSession(item.id, crop);
+    updateSessionLocalCrop(item.id, crop);
   }
 
   function endDrag(e: PointerEvent) {
@@ -74,13 +74,13 @@
     }
   }
 
-  const localCrop = $derived(cropSession.itemId === item.id && cropSession.base
-    ? cropRelativeTo(cropSession.base.crop, item.crop)
-    : { left: 0, top: 0, right: 1, bottom: 1 });
+  const localCrop = $derived(getSessionLocalCrop(item));
   const cropLeftPct = $derived(localCrop.left * 100);
   const cropTopPct = $derived(localCrop.top * 100);
   const cropWidthPct = $derived((localCrop.right - localCrop.left) * 100);
   const cropHeightPct = $derived((localCrop.bottom - localCrop.top) * 100);
+  const isCut = $derived(cropSession.mode === "cut");
+  const handleTone = $derived(isCut ? "bg-accent" : "bg-warning");
 </script>
 
 <!-- Dark overlay outside crop region -->
@@ -91,9 +91,10 @@
   <div class="absolute bg-black/40" style="left: {cropLeftPct}%; bottom: 0; width: {cropWidthPct}%; height: {100 - localCrop.bottom * 100}%;"></div>
 </div>
 
-<!-- Crop frame + handles -->
+<!-- Crop/cut frame + handles -->
 <div
-  class="no-print absolute z-20 border-2 border-dashed border-warning cursor-move"
+  class="no-print absolute z-20 border-2 border-dashed cursor-move {isCut ? 'border-accent' : 'border-warning'}"
+  data-region-handles={cropSession.mode}
   style="left: {cropLeftPct}%; top: {cropTopPct}%; width: {cropWidthPct}%; height: {cropHeightPct}%;"
   aria-hidden="true"
   onpointerdown={(e) => startDrag(e, "move")}
@@ -103,7 +104,7 @@
 >
   <!-- Edge handles -->
   <div
-    class="absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 w-1.5 h-8 bg-warning cursor-ew-resize pointer-events-auto rounded-sm"
+    class="absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 w-1.5 h-8 {handleTone} cursor-ew-resize pointer-events-auto rounded-sm"
     aria-hidden="true"
     onpointerdown={(e) => startDrag(e, "l")}
     onpointermove={onMove}
@@ -111,7 +112,7 @@
     onpointercancel={endDrag}
   ></div>
   <div
-    class="absolute right-0 top-1/2 translate-x-1/2 -translate-y-1/2 w-1.5 h-8 bg-warning cursor-ew-resize pointer-events-auto rounded-sm"
+    class="absolute right-0 top-1/2 translate-x-1/2 -translate-y-1/2 w-1.5 h-8 {handleTone} cursor-ew-resize pointer-events-auto rounded-sm"
     aria-hidden="true"
     onpointerdown={(e) => startDrag(e, "r")}
     onpointermove={onMove}
@@ -119,7 +120,7 @@
     onpointercancel={endDrag}
   ></div>
   <div
-    class="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-1.5 bg-warning cursor-ns-resize pointer-events-auto rounded-sm"
+    class="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-1.5 {handleTone} cursor-ns-resize pointer-events-auto rounded-sm"
     aria-hidden="true"
     onpointerdown={(e) => startDrag(e, "t")}
     onpointermove={onMove}
@@ -127,7 +128,7 @@
     onpointercancel={endDrag}
   ></div>
   <div
-    class="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-8 h-1.5 bg-warning cursor-ns-resize pointer-events-auto rounded-sm"
+    class="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-8 h-1.5 {handleTone} cursor-ns-resize pointer-events-auto rounded-sm"
     aria-hidden="true"
     onpointerdown={(e) => startDrag(e, "b")}
     onpointermove={onMove}
@@ -137,7 +138,7 @@
 
   <!-- Corner handles -->
   <div
-    class="absolute left-0 top-0 -translate-x-1/2 -translate-y-1/2 w-3 h-3 bg-warning cursor-nw-resize pointer-events-auto rounded-sm border border-white/50"
+    class="absolute left-0 top-0 -translate-x-1/2 -translate-y-1/2 w-3 h-3 {handleTone} cursor-nw-resize pointer-events-auto rounded-sm border border-white/50"
     aria-hidden="true"
     onpointerdown={(e) => startDrag(e, "lt")}
     onpointermove={onMove}
@@ -145,7 +146,7 @@
     onpointercancel={endDrag}
   ></div>
   <div
-    class="absolute right-0 top-0 translate-x-1/2 -translate-y-1/2 w-3 h-3 bg-warning cursor-ne-resize pointer-events-auto rounded-sm border border-white/50"
+    class="absolute right-0 top-0 translate-x-1/2 -translate-y-1/2 w-3 h-3 {handleTone} cursor-ne-resize pointer-events-auto rounded-sm border border-white/50"
     aria-hidden="true"
     onpointerdown={(e) => startDrag(e, "rt")}
     onpointermove={onMove}
@@ -153,7 +154,7 @@
     onpointercancel={endDrag}
   ></div>
   <div
-    class="absolute left-0 bottom-0 -translate-x-1/2 translate-y-1/2 w-3 h-3 bg-warning cursor-sw-resize pointer-events-auto rounded-sm border border-white/50"
+    class="absolute left-0 bottom-0 -translate-x-1/2 translate-y-1/2 w-3 h-3 {handleTone} cursor-sw-resize pointer-events-auto rounded-sm border border-white/50"
     aria-hidden="true"
     onpointerdown={(e) => startDrag(e, "lb")}
     onpointermove={onMove}
@@ -161,7 +162,7 @@
     onpointercancel={endDrag}
   ></div>
   <div
-    class="absolute right-0 bottom-0 translate-x-1/2 translate-y-1/2 w-3 h-3 bg-warning cursor-se-resize pointer-events-auto rounded-sm border border-white/50"
+    class="absolute right-0 bottom-0 translate-x-1/2 translate-y-1/2 w-3 h-3 {handleTone} cursor-se-resize pointer-events-auto rounded-sm border border-white/50"
     aria-hidden="true"
     onpointerdown={(e) => startDrag(e, "rb")}
     onpointermove={onMove}

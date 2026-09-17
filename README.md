@@ -1,5 +1,7 @@
 # TinyCut
 
+**Use it at [tinycut.pages.dev](https://tinycut.pages.dev/).**
+
 A browser-based layout tool for placing images on printable pages at exact physical dimensions (mm/cm). Think of it as a digital trim-and-arrange board — place, resize, crop, and position images for print.
 
 ## Features
@@ -9,6 +11,7 @@ A browser-based layout tool for placing images on printable pages at exact physi
 - Resize images to exact physical dimensions in mm or cm
 - Lock/unlock aspect ratio when resizing
 - Crop images with numeric controls and visual crop handles
+- Cut pieces from an image without trimming the original, so you can take several details from one photo
 - Create rectangles, circles, lines, and editable text
 - Rotate, resize, style, reorder, duplicate, and delete items
 - Shift-select and move, duplicate, or delete multiple items together
@@ -20,7 +23,8 @@ A browser-based layout tool for placing images on printable pages at exact physi
 - Undo/redo history
 - Export to layered SVG with physical dimensions or PNG at selectable 300, 600, or 1200 DPI
 - Print at correct physical page size
-- Save/load projects via localStorage
+- Save layouts in this browser (origin private file system), each with its own id
+- Open a new tab to start from an empty page; refresh restores the layout in that tab after Save
 - Import/export projects as JSON
 - Light and dark DaisyUI themes
 
@@ -35,7 +39,7 @@ A browser-based layout tool for placing images on printable pages at exact physi
 
 ## Privacy and cost
 
-TinyCut is free to use and has no account, backend, ads, analytics, or paid features. Images and project content are processed in the browser. Saving uses this browser's local storage; clearing site data removes that saved copy. Download project JSON files for durable backups and transferring work to another device. A hosting provider may log ordinary page requests separately from the application.
+TinyCut is free to use and has no account, backend, ads, analytics, or paid features. Images and project content are processed in the browser. Saving uses this browser's origin private file system (files the browser keeps for this site on this device). Clearing site data removes those copies. Download project JSON files for durable backups and transferring work to another device. A hosting provider may log ordinary page requests separately from the application.
 
 ## Install & Run
 
@@ -85,9 +89,10 @@ When you type values in the sidebar, you can switch between mm and cm display. I
 5. **Add artwork**: Use the rectangle, circle, line, and text tools in the toolbar.
 6. **Lock aspect ratio**: Toggle the checkbox in the properties panel to preserve proportions.
 7. **Crop**: Click "Crop Image" and trim visually or enter the amount removed from each edge.
-8. **Arrange**: Shift-click items or layers for multi-selection; use the layer arrows or context menu for stacking.
-9. **Align**: Use "Center X" or "Center Y" in the inspector to center one item or an entire selection while preserving its internal layout.
-10. **Export/Print**: Open Export to download a layered SVG, a JPEG or PNG at a chosen DPI, or print / save as PDF. JPEG is the default for smaller files; PNG is lossless and records the chosen physical print density.
+8. **Cut**: Click "Cut from Image" and select a region the same way as crop. Each cut makes a new object and leaves the original so you can take more details. Press Esc when you are done.
+9. **Arrange**: Shift-click items or layers for multi-selection; use the layer arrows or context menu for stacking.
+10. **Align**: Use "Center X" or "Center Y" in the inspector to center one item or an entire selection while preserving its internal layout.
+11. **Export/Print**: Open Export to download a layered SVG, a JPEG or PNG at a chosen DPI, or print / save as PDF. JPEG is the default for smaller files; PNG is lossless and records the chosen physical print density.
 
 ## Keyboard Shortcuts
 
@@ -95,7 +100,8 @@ When you type values in the sidebar, you can switch between mm and cm display. I
 |-----|--------|
 | Delete / Backspace | Delete selected items |
 | Ctrl/Cmd + D | Duplicate selected items |
-| Ctrl/Cmd + S | Save to localStorage |
+| Ctrl/Cmd + S | Save in this browser |
+| Ctrl/Cmd + O | Open a saved layout |
 | Ctrl/Cmd + N | New A4 document |
 | Ctrl/Cmd + Z / Shift + Z | Undo / redo |
 | Ctrl/Cmd + Y | Redo |
@@ -105,8 +111,18 @@ When you type values in the sidebar, you can switch between mm and cm display. I
 | Shift + click | Add/remove an item from the selection |
 | R / Shift + R | Rotate the primary item by +90° / −90° |
 | Ctrl/Cmd + mouse wheel | Zoom around the pointer |
-| Escape | Deselect / exit crop mode |
-| Enter | Apply crop and exit crop mode |
+| C | Crop the selected image |
+| X | Cut a piece from the selected image |
+| Escape | Deselect / exit crop or cut mode |
+| Enter | Apply crop, or cut a piece and keep cutting |
+
+## Saving layouts
+
+Each tab is its own layout. Opening TinyCut in a new tab always starts with an empty page. The address bar gets a layout id (`#/p/…`) so refreshing **this** tab can restore it after you press Save.
+
+Save stores the layout in this browser's origin private file system — a private folder the browser keeps for this site, not your Downloads folder. Images are stored as separate files next to a small JSON description, so photo layouts are not stuffed into `localStorage`. Clearing site data removes those files.
+
+Project → Open lists layouts saved in this browser. Download a project JSON file when you want a backup or to move the layout to another device.
 
 ## Printing
 
@@ -132,6 +148,7 @@ src/
       units.ts               mm/px/cm conversions
       ids.ts                 Unique ID generation
       image.ts               File loading & dimension detection
+      projectStorage.ts      Origin private file system save/load
       exportSvg.ts           SVG export
     components/
       TopToolbar.svelte      Toolbar with page, zoom, unit controls
@@ -175,14 +192,14 @@ Connect the GitHub repository `tmscsb/tinycut` to a Cloudflare Pages project wit
 
 The build command installs dependencies from the committed `bun.lock` and builds the static site. Cloudflare Pages publishes the generated `dist/` directory; it should not be committed. The environment settings select the tested Bun version and the project's required Node version, while disabling Pages' separate dependency installation. Once Git integration is connected, pushes to `main` trigger production deployments.
 
-On the host, serve `index.html` with revalidation (`Cache-Control: no-cache`) and hashed `/assets/` files with long-lived immutable caching. Configure `X-Content-Type-Options: nosniff` and an appropriate `Referrer-Policy`. Check the deployed URL in a clean browser before announcing it.
+`public/_headers` is copied into `dist/` and, on Cloudflare Pages, serves `index.html` with revalidation (`Cache-Control: no-cache`), hashed `/assets/` files with long-lived immutable caching, `X-Content-Type-Options: nosniff`, and `Referrer-Policy: strict-origin-when-cross-origin`. The build also includes `robots.txt`, `sitemap.xml`, the Open Graph image, and app icons. The canonical URL in `index.html` is `https://tinycut.pages.dev/`; update it if the public origin changes. Check the deployed URL in a clean browser before announcing it.
 
 ## Known Limitations
 
 - Multi-selection supports group movement, nudging, duplication, and deletion, but not marquee selection or group resizing.
 - Text uses a small browser-safe font list; custom font embedding is not available.
 - Images are limited to 20 MB and 64 megapixels; project imports to 50 MB and 1,000 items; paper dimensions to 2,000 mm per side.
-- Browser storage quotas still apply to local saves containing large embedded images. JSON export is the durable backup path, and quota failures are reported in the UI.
+- Browser storage quotas still apply to layouts saved in this browser. Quota failures are reported in the UI; download a project JSON as a backup.
 - PNG resolutions that would require an unsafe browser canvas allocation are disabled for the current page size; use a lower DPI or a smaller page.
 - Undo keeps up to 50 operations, with a 64 MB snapshot budget (plus the most recent operation). Large embedded images reduce the available undo depth.
 - Print margins and scaling must remain disabled in the browser print dialog; TinyCut supplies the exact CSS page size.

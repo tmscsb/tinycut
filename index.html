@@ -3,12 +3,66 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="icon" type="image/svg+xml" href="/tinycut-icon.svg" />
-    <meta name="description" content="TinyCut helps you create print layouts at exact dimensions. Arrange, resize, and crop images, add shapes and text, and export or print. Free to use, with your files kept in your browser." />
+    <title>TinyCut — Free Print Layout Editor</title>
+    <meta name="description" content="Free print layout editor in your browser. Crop and size images in millimeters, then export SVG, JPEG, PNG, or PDF. No account — files stay on your device." />
+    <link rel="canonical" href="https://tinycut.pages.dev/" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+    <meta name="application-name" content="TinyCut" />
+    <meta name="apple-mobile-web-app-title" content="TinyCut" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#1d232a" media="(prefers-color-scheme: dark)" />
     <meta name="color-scheme" content="light dark" />
-    <title>TinyCut — Free Print Layout Editor</title>
+    <link rel="icon" type="image/svg+xml" href="/tinycut-icon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="TinyCut" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:url" content="https://tinycut.pages.dev/" />
+    <meta property="og:title" content="TinyCut — Free Print Layout Editor" />
+    <meta property="og:description" content="Free print layout editor in your browser. Crop and size images in millimeters, then export SVG, JPEG, PNG, or PDF. No account — files stay on your device." />
+    <meta property="og:image" content="https://tinycut.pages.dev/og-image.png" />
+    <meta property="og:image:alt" content="TinyCut wordmark and icon on a dark background, with the tagline free print layout editor." />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="TinyCut — Free Print Layout Editor" />
+    <meta name="twitter:description" content="Free print layout editor in your browser. Crop and size images in millimeters, then export SVG, JPEG, PNG, or PDF. No account — files stay on your device." />
+    <meta name="twitter:image" content="https://tinycut.pages.dev/og-image.png" />
+    <meta name="twitter:image:alt" content="TinyCut wordmark and icon on a dark background, with the tagline free print layout editor." />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "TinyCut",
+        "alternateName": "TinyCut — Free Print Layout Editor",
+        "url": "https://tinycut.pages.dev/",
+        "description": "Free print layout editor in your browser. Crop and size images in millimeters, then export SVG, JPEG, PNG, or PDF. No account — files stay on your device.",
+        "applicationCategory": "DesignApplication",
+        "operatingSystem": "Any",
+        "browserRequirements": "Requires JavaScript. Runs in a modern web browser.",
+        "isAccessibleForFree": true,
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        },
+        "featureList": [
+          "Place images on A4, A5, A6, Letter, or custom pages at exact millimeter sizes",
+          "Crop and cut image regions without sending files to a server",
+          "Add rectangles, circles, lines, and editable text",
+          "Export layered SVG, JPEG, or PNG, or print and save as PDF"
+        ],
+        "image": "https://tinycut.pages.dev/og-image.png",
+        "screenshot": "https://tinycut.pages.dev/og-image.png",
+        "license": "https://github.com/tmscsb/tinycut/blob/main/LICENSE",
+        "codeRepository": "https://github.com/tmscsb/tinycut",
+        "inLanguage": "en"
+      }
+    </script>
     <script>
       (function () {
         try {
@@ -24,7 +78,22 @@
     </script>
   </head>
   <body>
-    <noscript>TinyCut needs JavaScript to edit layouts. Enable JavaScript in your browser to get started. Your images and projects are processed locally.</noscript>
+    <noscript>
+      <article style="max-width:42rem;margin:2.5rem auto;padding:0 1.5rem;font:16px/1.55 system-ui,sans-serif;color:#111827">
+        <h1>TinyCut — Free Print Layout Editor</h1>
+        <p>TinyCut is a free in-browser print layout editor. Place, crop, and size images in millimeters on A4, A5, A6, Letter, or custom pages, then export SVG, JPEG, PNG, or PDF. There is no account. Images and projects stay on your device.</p>
+        <p><strong>JavaScript is required to use the editor.</strong> Enable JavaScript in your browser, then reload this page.</p>
+        <h2>What you can do</h2>
+        <ul>
+          <li>Import PNG, JPEG, WebP, and SVG images</li>
+          <li>Resize to exact millimeter or centimeter dimensions</li>
+          <li>Crop images or cut several details from one photo</li>
+          <li>Add rectangles, circles, lines, and editable text</li>
+          <li>Print at the real page size, or save a PDF from the print dialog</li>
+        </ul>
+        <p>Source code: <a href="https://github.com/tmscsb/tinycut">github.com/tmscsb/tinycut</a></p>
+      </article>
+    </noscript>
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>

@@ -4,6 +4,7 @@ export const ui = $state({
   showShortcuts: false,
   showShortcutHints: false,
   showUnsavedWarning: false,
+  showOpenProjects: false,
   pendingAction: null as (() => void) | null,
   theme: "light" as Theme,
   contextMenu: null as { x: number; y: number; itemId: string } | null,
@@ -55,6 +56,14 @@ export function showShortcuts(): void {
 
 export function hideShortcuts(): void {
   ui.showShortcuts = false;
+}
+
+export function showOpenProjects(): void {
+  ui.showOpenProjects = true;
+}
+
+export function hideOpenProjects(): void {
+  ui.showOpenProjects = false;
 }
 
 export function toggleShortcutHints(): void {

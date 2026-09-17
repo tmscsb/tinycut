@@ -5,8 +5,10 @@
     addImage,
     addShape,
     addText,
-    saveToLocalStorage,
-    requestLoadFromLocalStorage,
+    saveProject,
+    persistState,
+    requestOpenProjects,
+    setProjectName,
     setZoom,
     setUnit,
     exportJson,
@@ -37,6 +39,7 @@
   let exportMenu: HTMLDetailsElement | undefined = $state();
   import Icon from "./Icon.svelte";
   import { exportDocumentAsSvg } from "../utils/exportSvg.ts";
+  import { formatDisplay } from "../utils/units.ts";
   import { tick } from "svelte";
   const dpiOptions = [150, 300, 600, 1200];
   const pngDimensions = $derived(getPngExportDimensions(doc.page, pngDpi));
@@ -107,7 +110,7 @@
   function handleExportJson() {
     closeMenus();
     const json = exportJson();
-    downloadBlob(new Blob([json], { type: "application/json" }), "tinycut-project.json");
+    downloadBlob(new Blob([json], { type: "application/json" }), projectFileName(doc.name));
     showNotice("Project JSON exported", "success");
   }
 
@@ -131,6 +134,11 @@
     }
   }
 
+  function projectFileName(name: string): string {
+    const slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+    return `tinycut-${slug || "project"}.json`;
+  }
+
   function closeMenus() {
     if (projectMenu) projectMenu.open = false;
     if (exportMenu) exportMenu.open = false;
@@ -150,26 +158,27 @@
 
 <svelte:window onpointerdown={handleOutsidePointer} onkeydown={handleMenuKey} />
 
-<header class="top-toolbar no-print bg-base-100 border-b border-base-300">
+<header class="top-toolbar no-print bg-base-100 border-b border-base-300" data-layout-id={doc.id} data-layout-name={doc.name}>
   <div class="toolbar-header">
-    <div class="toolbar-brand" aria-label="TinyCut">
+    <h1 class="toolbar-brand">
       <img src="/tinycut-icon.svg" alt="" width="28" height="28" />
       <span>TinyCut</span>
       <span class="toolbar-tagline">Layouts made to print</span>
-    </div>
+    </h1>
     <div class="toolbar-spacer"></div>
-    <span class="save-status" aria-live="polite">{doc.dirty ? "Unsaved changes" : "Up to date"}</span>
-    <button class="btn btn-sm btn-ghost toolbar-save" onclick={saveToLocalStorage} aria-label="Save to browser" title={`Save to browser (${modKey}+S)`}><Icon name="save" /><span class="desktop-label">Save</span></button>
+    <input class="input input-sm project-name" bind:value={doc.name} maxlength="80" autocomplete="off" aria-label="Layout name" title="Layout name" onchange={(e) => setProjectName(e.currentTarget.value)} onblur={(e) => setProjectName(e.currentTarget.value)} />
+    <span class="save-status" aria-live="polite">{doc.dirty ? "Unsaved changes" : persistState.lastSavedAt ? "Saved in this browser" : "Not saved yet"}</span>
+    <button class="btn btn-sm btn-ghost toolbar-save" onclick={() => void saveProject()} disabled={persistState.saving} aria-label="Save in this browser" title={`Save in this browser (${modKey}+S)`}><Icon name="save" /><span class="desktop-label">{persistState.saving ? "Saving…" : "Save"}</span></button>
     <details class="dropdown dropdown-end" bind:this={projectMenu} ontoggle={() => { if (projectMenu?.open && exportMenu) exportMenu.open = false; }}>
       <summary class="btn btn-sm btn-ghost" aria-label="Project menu"><Icon name="folder" /><span>Project</span><Icon name="chevron" size={14} /></summary>
-      <ul class="dropdown-content menu bg-base-100 rounded-box w-60 p-2 shadow-xl border border-base-300">
+      <ul class="dropdown-content menu bg-base-100 rounded-box w-64 p-2 shadow-xl border border-base-300">
         <li><button onclick={() => { closeMenus(); requestNewDocument("a4-portrait"); }}><Icon name="file" />New document</button></li>
-        <li><button onclick={() => { closeMenus(); saveToLocalStorage(); }}><Icon name="save" />Save to browser</button></li>
-        <li><button onclick={() => { closeMenus(); requestLoadFromLocalStorage(); }}>Load saved project</button></li>
+        <li><button onclick={() => { closeMenus(); void saveProject(); }} disabled={persistState.saving}><Icon name="save" />Save in this browser</button></li>
+        <li><button onclick={() => { closeMenus(); requestOpenProjects(); }}><Icon name="folder" />Open…</button></li>
         <li><button onclick={handleExportJson}>Download project JSON</button></li>
         <li><button onclick={() => { closeMenus(); importInput?.click(); }}>Open project JSON</button></li>
         <li class="small-phone-help"><button onclick={() => { closeMenus(); showShortcuts(); }}><Icon name="help" />Keyboard shortcuts</button></li>
-        <li class="menu-note">Saved in this browser only. Download a project file to keep a backup.</li>
+        <li class="menu-note">Save keeps this layout in this browser, on this device. A new tab starts empty. Download a JSON file to copy the layout elsewhere.</li>
       </ul>
     </details>
     <details class="dropdown dropdown-end" bind:this={exportMenu} ontoggle={() => { if (exportMenu?.open && projectMenu) projectMenu.open = false; }}>
@@ -214,6 +223,7 @@
         {#if doc.page.templateId === "custom"}<option value="custom" disabled>Custom size</option>{/if}
         {#each PAGE_TEMPLATES as tpl}<option value={tpl.id}>{tpl.name}</option>{/each}
       </select>
+      <span class="page-size-readout" title="{doc.page.name} page size">{formatDisplay(doc.page.widthMm, doc.unit)} × {formatDisplay(doc.page.heightMm, doc.unit)} {doc.unit}</span>
       <select class="select select-sm unit-select" value={doc.unit} onchange={(e) => setUnit(e.currentTarget.value as "mm" | "cm")} aria-label="Measurement unit"><option value="mm">mm</option><option value="cm">cm</option></select>
     </div>
     <div class="toolbar-spacer"></div>

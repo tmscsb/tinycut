@@ -6,6 +6,8 @@ import { printSurfaceInnerHtml, stripXmlDeclaration } from "./printDocument.ts";
 
 const state = {
   version: 2,
+  id: "test-doc-1",
+  name: "Untitled",
   page: { templateId: "a4-portrait", name: "A4 Portrait", widthMm: 210, heightMm: 297 },
   items: [{
     id: "image-1",

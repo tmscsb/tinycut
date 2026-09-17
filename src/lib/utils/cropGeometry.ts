@@ -101,6 +101,14 @@ export function screenDeltaToLocalCropPercent(
   };
 }
 
+/** Print frame for a region of the currently visible image, without mutating the source. */
+export function cutRegionFromImage(
+  item: ImageItem,
+  localCrop: ImageCrop,
+): Pick<ImageItem, "crop" | "xMm" | "yMm" | "widthMm" | "heightMm"> {
+  return applyCropToImageFrame(item, composeCrop(item.crop, localCrop));
+}
+
 export function applyCropToImageFrame(
   item: ImageItem,
   requestedCrop: ImageCrop,

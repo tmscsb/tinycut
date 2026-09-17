@@ -8,6 +8,7 @@
     bringForward,
     sendBackward,
     enterCropMode,
+    enterCutMode,
     resetCrop,
     centerSelectedOnPage,
   } from "../stores/documentStore.svelte.ts";
@@ -34,7 +35,7 @@
   const isMac = typeof navigator !== "undefined" && navigator.platform.includes("Mac");
   const modKey = isMac ? "⌘" : "Ctrl";
   const menuX = $derived(Math.max(8, Math.min(x, window.innerWidth - 220)));
-  const menuY = $derived(Math.max(8, Math.min(y, window.innerHeight - 380)));
+  const menuY = $derived(Math.max(8, Math.min(y, window.innerHeight - 420)));
   let menuEl: HTMLDivElement | undefined = $state();
 
   onMount(() => {
@@ -117,6 +118,11 @@
     <div class="divider my-1"></div>
     <button class="btn btn-sm btn-ghost w-full justify-start" role="menuitem" onclick={() => action(() => enterCropMode(item.id))}>
       Crop
+      <kbd class="kbd kbd-xs ml-auto">C</kbd>
+    </button>
+    <button class="btn btn-sm btn-ghost w-full justify-start" role="menuitem" onclick={() => action(() => enterCutMode(item.id))}>
+      Cut from Image
+      <kbd class="kbd kbd-xs ml-auto">X</kbd>
     </button>
     <button class="btn btn-sm btn-ghost w-full justify-start" role="menuitem" onclick={() => action(() => resetCrop(item.id))}>
       Reset Crop

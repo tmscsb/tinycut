@@ -16,7 +16,7 @@
   });
 </script>
 
-<div class="print-page-container relative pb-8" style="--page-w: {doc.page.widthMm}mm; --page-h: {doc.page.heightMm}mm;">
+<div class="print-page-container relative" style="--page-w: {doc.page.widthMm}mm; --page-h: {doc.page.heightMm}mm;">
   <div
     class="print-page bg-white shadow-xl relative overflow-visible"
     class:page-grid={doc.showGrid}
@@ -45,9 +45,5 @@
         <TextObject item={item} zIndex={index + 1} />
       {/if}
     {/each}
-  </div>
-
-  <div class="no-print absolute bottom-0 left-1/2 -translate-x-1/2 text-xs text-base-content/65 whitespace-nowrap font-medium">
-    {doc.page.name} — {doc.page.widthMm.toFixed(1)} × {doc.page.heightMm.toFixed(1)} mm
   </div>
 </div>

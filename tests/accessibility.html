@@ -38,6 +38,9 @@ button.onclick=async()=>{
    clickText('Done Cropping'); await wait();
    clickText('Page settings'); await check(prefix+'Page settings');
    doc.querySelector('[aria-label="Project menu"]').click(); await check(prefix+'Project menu');
+   clickText('Open…'); await check(prefix+'Open layouts dialog');
+   clickText('Close');
+   doc.querySelector('[aria-label="Project menu"]').click();
    clickText('New document'); await check(prefix+'Unsaved changes dialog');
    clickText('Cancel');
    doc.querySelector('.theme-control').click(); await wait();

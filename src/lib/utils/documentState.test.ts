@@ -9,6 +9,8 @@ import {
 
 const base: DocumentState = {
   version: 2,
+  id: "test-doc-1",
+  name: "Untitled",
   page: { templateId: "custom", name: "Custom", widthMm: 100, heightMm: 100 },
   items: [],
   selectedItemId: null,
@@ -110,6 +112,7 @@ test("content snapshots ignore view and selection state", () => {
     selectedItemIds: ["missing"],
   };
   assert.equal(getDocumentContentSnapshot(base), getDocumentContentSnapshot(changedView));
+  assert.notEqual(getDocumentContentSnapshot(base), getDocumentContentSnapshot({ ...base, name: "Poster" }));
 });
 
 test("serialized projects do not persist transient editor state", () => {
