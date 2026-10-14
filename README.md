@@ -21,7 +21,8 @@ A browser-based layout tool for placing images on printable pages at exact physi
 - Drag to move items on the page
 - Visual resize handles (corners and edges)
 - Undo/redo history
-- Export to layered SVG with physical dimensions or PNG at selectable 300, 600, or 1200 DPI
+- Export JPEG or PNG at selectable 300, 600, or 1200 DPI, or print / save as PDF
+- Add a configurable border (width and color) to images
 - Print at correct physical page size
 - Save layouts in this browser (origin private file system), each with its own id
 - Open a new tab to start from an empty page; refresh restores the layout in that tab after Save
@@ -92,7 +93,7 @@ When you type values in the sidebar, you can switch between mm and cm display. I
 8. **Cut**: Click "Cut from Image" and select a region the same way as crop. Each cut makes a new object and leaves the original so you can take more details. Press Esc when you are done.
 9. **Arrange**: Shift-click items or layers for multi-selection; use the layer arrows or context menu for stacking.
 10. **Align**: Use "Center X" or "Center Y" in the inspector to center one item or an entire selection while preserving its internal layout.
-11. **Export/Print**: Open Export to download a layered SVG, a JPEG or PNG at a chosen DPI, or print / save as PDF. JPEG is the default for smaller files; PNG is lossless and records the chosen physical print density.
+11. **Export/Print**: Open Export to download a JPEG or PNG at a chosen DPI, or print / save as PDF. JPEG is the default for smaller files; PNG is lossless and records the chosen physical print density.
 
 ## Keyboard Shortcuts
 
@@ -128,10 +129,6 @@ Project → Open lists layouts saved in this browser. Download a project JSON fi
 
 When you click Print, the app prints a page-sized SVG of the layout (not the editor pasteboard), so off-page objects and zoom do not change the PDF. Choose the matching paper size and print at 100% scale with no margins or headers. For PDF export, use your browser's "Save as PDF" option in the print dialog.
 
-## Export SVG
-
-The SVG export uses mm-based coordinates in the viewBox, so the exported file preserves physical dimensions. Text exports as native SVG text, with the same wrapping and alignment as the editor. Images are embedded and layers preserve stacking order. Installed fonts can differ between devices; check the result when opening an SVG in another editor.
-
 ## Project Structure
 
 ```
@@ -149,7 +146,7 @@ src/
       ids.ts                 Unique ID generation
       image.ts               File loading & dimension detection
       projectStorage.ts      Origin private file system save/load
-      exportSvg.ts           SVG export
+      pageSvg.ts             Page renderer used by image export and print
     components/
       TopToolbar.svelte      Toolbar with page, zoom, unit controls
       Workspace.svelte       Main editing area with drag support
@@ -169,7 +166,7 @@ src/
 
 For browser-only checks, start the dev server and open:
 
-- `/tests/browser.html`: image decoders, corrupt/unsupported input, layered SVG, raster pixels, and DPI metadata at 300/600/1200 DPI. Click **Run browser checks**.
+- `/tests/browser.html`: image decoders, corrupt/unsupported input, print surface, raster pixels, and DPI metadata at 300/600/1200 DPI. Click **Run browser checks**.
 - `/tests/accessibility.html`: WCAG A/AA checks for inspectors, page settings, menus, and dialogs in both themes. Click **Run accessibility checks** in a foreground Chrome tab.
 
 These test pages are outside the production build. `tests/fixtures/print.json` is a small project for checking print/PDF dimensions, clipping, and rotation. See [the release review](RELEASE_READINESS.md) for verified coverage and remaining platform checks.

@@ -1,5 +1,5 @@
 import type { DocumentState } from "../types/document.ts";
-import { exportDocumentAsSvg } from "./exportSvg.ts";
+import { renderDocumentSvg } from "./pageSvg.ts";
 
 export const PRINT_SURFACE_CLASS = "tinycut-print-surface";
 export const PRINT_PAGE_STYLE_ID = "trimkit-print-page-size";
@@ -9,7 +9,7 @@ export function stripXmlDeclaration(markup: string): string {
 }
 
 export function printSurfaceInnerHtml(state: DocumentState): string {
-  return stripXmlDeclaration(exportDocumentAsSvg(state));
+  return stripXmlDeclaration(renderDocumentSvg(state));
 }
 
 export function setPrintPageSize(widthMm: number, heightMm: number): void {

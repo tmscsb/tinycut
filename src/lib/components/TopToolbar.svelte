@@ -38,7 +38,6 @@
   let projectMenu: HTMLDetailsElement | undefined = $state();
   let exportMenu: HTMLDetailsElement | undefined = $state();
   import Icon from "./Icon.svelte";
-  import { exportDocumentAsSvg } from "../utils/exportSvg.ts";
   import { formatDisplay } from "../utils/units.ts";
   import { tick } from "svelte";
   const dpiOptions = [150, 300, 600, 1200];
@@ -112,12 +111,6 @@
     const json = exportJson();
     downloadBlob(new Blob([json], { type: "application/json" }), projectFileName(doc.name));
     showNotice("Project JSON exported", "success");
-  }
-
-  function handleExportSvg() {
-    closeMenus();
-    downloadBlob(new Blob([exportDocumentAsSvg(doc)], { type: "image/svg+xml" }), "tinycut-export.svg");
-    showNotice("Layered SVG exported", "success");
   }
 
   async function handlePrint() {
@@ -196,10 +189,9 @@
         </select>
         <p class="text-xs text-base-content/65 my-2">{pngDimensions.widthPx.toLocaleString()} × {pngDimensions.heightPx.toLocaleString()} pixels</p>
         <button class="btn btn-sm btn-primary w-full" onclick={handleExportPng} disabled={exportingPng || !pngDimensions.supported}><Icon name="image" />{exportingPng ? "Exporting…" : rasterFormat === "jpeg" ? "Download JPEG" : "Download PNG"}</button>
-        {#if !pngDimensions.supported}<p class="text-xs text-error mt-2">This page is too large for a bitmap export. Use SVG or print instead.</p>
+        {#if !pngDimensions.supported}<p class="text-xs text-error mt-2">This page is too large for a bitmap export. Use print / save as PDF instead.</p>
         {:else if largePng}<p class="text-xs text-warning mt-2">A photo PNG at this size is often tens of megabytes. Use JPEG or 300 DPI for a smaller file.</p>{/if}
-        <button class="btn btn-sm btn-ghost w-full justify-start mt-2" onclick={handleExportSvg}><Icon name="download" />Download SVG</button>
-        <button class="btn btn-sm btn-ghost w-full justify-start" onclick={handlePrint}><Icon name="print" />Print / Save as PDF</button>
+        <button class="btn btn-sm btn-ghost w-full justify-start mt-2" onclick={handlePrint}><Icon name="print" />Print / Save as PDF</button>
         <p class="text-xs text-base-content/65 mt-2">Choose {doc.page.name} paper and print at 100% scale with no margins or headers.</p>
       </div>
     </details>

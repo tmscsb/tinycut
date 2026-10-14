@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 const root = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 const site = "https://tinycut.pages.dev/";
 const description =
-  "Free print layout editor in your browser. Crop and size images in millimeters, then export SVG, JPEG, PNG, or PDF. No account — files stay on your device.";
+  "Free print layout editor in your browser. Crop and size images in millimeters, then export JPEG, PNG, or PDF. No account — files stay on your device.";
 
 function pngSize(path: string) {
   const buf = readFileSync(path);

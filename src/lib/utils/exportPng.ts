@@ -1,5 +1,5 @@
 import type { DocumentState, Page } from "../types/document.ts";
-import { exportDocumentAsSvg } from "./exportSvg.ts";
+import { renderDocumentSvg } from "./pageSvg.ts";
 import { setPngDensity } from "./pngMetadata.ts";
 
 export const PNG_EXPORT_DPI = 300;
@@ -47,7 +47,7 @@ export async function exportDocumentAsRaster(
   }
   const { widthPx, heightPx } = dimensions;
   const svgBlob = new Blob(
-    [exportDocumentAsSvg(state, { width: `${widthPx}px`, height: `${heightPx}px` })],
+    [renderDocumentSvg(state, { width: `${widthPx}px`, height: `${heightPx}px` })],
     { type: "image/svg+xml;charset=utf-8" },
   );
   const svgUrl = URL.createObjectURL(svgBlob);

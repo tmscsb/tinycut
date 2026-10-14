@@ -1,6 +1,6 @@
 import { exportDocumentAsPng, exportDocumentAsRaster } from '../src/lib/utils/exportPng.ts';
 import { printSurfaceInnerHtml } from '../src/lib/utils/printDocument.ts';
-import { exportDocumentAsSvg } from '../src/lib/utils/exportSvg.ts';
+import { renderDocumentSvg } from '../src/lib/utils/pageSvg.ts';
 import { loadImageFile } from '../src/lib/utils/image.ts';
 import { normalizeDocument } from '../src/lib/utils/documentState.ts';
 import type { DocumentState, TextItem } from '../src/lib/types/document.ts';
@@ -25,14 +25,14 @@ async function check(name: string, run: () => Promise<void> | void) {
     await check(`${type} import preserves dimensions`, async () => {
       const blob = await toBlob(canvas, type); const loaded = await loadImageFile(new File([blob], `sample.${type.split('/')[1]}`,{type}));
       assert(loaded.naturalWidthPx === 120 && loaded.naturalHeightPx === 80, 'Wrong image dimensions');
-      if (type === 'image/png') state.items.push({id:'raster',name:'Cropped PNG',type:'image',...loaded,xMm:5,yMm:25,widthMm:20,heightMm:25,rotationDeg:15,lockedAspectRatio:false,crop:{left:0.5,top:0,right:1,bottom:1}});
+      if (type === 'image/png') state.items.push({id:'raster',name:'Cropped PNG',type:'image',...loaded,xMm:5,yMm:25,widthMm:20,heightMm:25,rotationDeg:15,lockedAspectRatio:false,crop:{left:0.5,top:0,right:1,bottom:1},borderWidthMm:0,borderColor:'#000000'});
     });
   }
-  await check('SVG image import and rotated layer export', async () => {
+  await check('SVG image import', async () => {
     const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="#16a34a"/><circle cx="50" cy="50" r="30" fill="#facc15"/></svg>';
     const loaded = await loadImageFile(new File([svg],'sample.svg',{type:'image/svg+xml'}));
     assert(loaded.naturalWidthPx === 100, 'SVG did not load');
-    state.items.push({id:'vector',name:'SVG artwork',type:'image',...loaded,xMm:40,yMm:25,widthMm:25,heightMm:25,rotationDeg:-15,lockedAspectRatio:true,crop:{left:0,top:0,right:1,bottom:1}});
+    state.items.push({id:'vector',name:'SVG artwork',type:'image',...loaded,xMm:40,yMm:25,widthMm:25,heightMm:25,rotationDeg:-15,lockedAspectRatio:true,crop:{left:0,top:0,right:1,bottom:1},borderWidthMm:0,borderColor:'#000000'});
   });
   await check('corrupt image is rejected', async () => {
     let rejected = false; try { await loadImageFile(new File(['broken'],'bad.png',{type:'image/png'})); } catch { rejected=true; }
@@ -77,16 +77,6 @@ async function check(name: string, run: () => Promise<void> | void) {
       if(dpi===300){const img=new Image();img.src=URL.createObjectURL(blob);img.alt='Verified PNG with multiline text and cropped, rotated images';preview.append(document.createElement('br'),img);}
     });
   }
-  await check('SVG is well-formed, layered, and contains native editable text', async () => {
-    const svg = exportDocumentAsSvg(state); const parsed = new DOMParser().parseFromString(svg, 'image/svg+xml');
-    assert(!parsed.querySelector('parsererror'), 'SVG is not valid XML');
-    assert(parsed.querySelectorAll('g[data-layer-index]').length === 3, 'Missing layer');
-    assert(parsed.querySelector('text')?.textContent?.includes('A < B & C'), 'Escaped text was lost');
-    assert(!parsed.querySelector('foreignObject'), 'Text still uses foreignObject');
-    assert(parsed.documentElement.getAttribute('overflow') === 'hidden', 'Page SVG must clip off-page artwork');
-    const blob = new Blob([svg], {type:'image/svg+xml'});
-    const link = document.createElement('a'); link.href=URL.createObjectURL(blob); link.download='tinycut-browser-check.svg'; link.textContent='Download test SVG'; preview.append(link);
-  });
   const failed=results.querySelectorAll('.fail').length;
   status.textContent=`${results.children.length-failed}/${results.children.length} browser checks passed${failed ? `; ${failed} failed` : ''}`;
 };

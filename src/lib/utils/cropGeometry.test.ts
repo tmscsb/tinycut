@@ -11,7 +11,7 @@ import {
   normalizeCrop,
   screenDeltaToLocalCropPercent,
 } from "./cropGeometry.ts";
-import { exportDocumentAsSvg } from "./exportSvg.ts";
+import { renderDocumentSvg } from "./pageSvg.ts";
 
 function image(overrides: Partial<ImageItem> = {}): ImageItem {
   return {
@@ -127,7 +127,7 @@ test("migrates legacy pre-crop dimensions to visible dimensions", () => {
   assert.equal(migrated.heightMm, 30.000000000000004);
 });
 
-test("SVG export uses the visible crop frame exactly once", () => {
+test("page render uses the visible crop frame exactly once", () => {
   const cropped = image({ xMm: 35, yMm: 30, widthMm: 50, heightMm: 30, crop: { left: 0.25, top: 0.2, right: 0.75, bottom: 0.8 } });
   const state = {
     version: 2,
@@ -146,7 +146,7 @@ test("SVG export uses the visible crop frame exactly once", () => {
     cropModeItemId: null,
     dirty: false,
   } satisfies DocumentState;
-  const svg = exportDocumentAsSvg(state);
+  const svg = renderDocumentSvg(state);
   assert.match(svg, /x="35"/);
   assert.match(svg, /y="30"/);
   assert.match(svg, /width="50"/);
@@ -157,7 +157,7 @@ test("SVG export uses the visible crop frame exactly once", () => {
   assert.equal(svg.match(/<image\s/g)?.length, 1);
 });
 
-test("SVG export includes every image in document layer order", () => {
+test("page render includes every image in document layer order", () => {
   const state = {
     version: 2,
     id: "test-doc-1",
@@ -179,14 +179,13 @@ test("SVG export includes every image in document layer order", () => {
     dirty: false,
   } satisfies DocumentState;
 
-  const svg = exportDocumentAsSvg(state);
+  const svg = renderDocumentSvg(state);
   assert.equal(svg.match(/<image\s/g)?.length, 2);
-  assert.ok(svg.indexOf('id="layer-0-back"') < svg.indexOf('id="layer-1-front"'));
-  assert.match(svg, /inkscape:label="Back &amp; base"/);
+  assert.ok(svg.indexOf("base64,AAAA") < svg.indexOf("base64,BBBB"));
   assert.match(svg, /xlink:href="data:image\/jpeg;base64,BBBB"/);
 });
 
-test("SVG export preserves rotation and escapes text", () => {
+test("page render preserves rotation and escapes text", () => {
   const state = {
     version: 2,
     id: "test-doc-1",
@@ -220,7 +219,7 @@ test("SVG export preserves rotation and escapes text", () => {
     cropModeItemId: null,
     dirty: false,
   } satisfies DocumentState;
-  const svg = exportDocumentAsSvg(state);
+  const svg = renderDocumentSvg(state);
   assert.match(svg, /transform="rotate\(45 30 25\)"/);
   assert.match(svg, /A &lt; B &amp; C/);
   assert.match(svg, /<svg x="10" y="20" width="40" height="10"/);

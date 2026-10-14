@@ -7,10 +7,10 @@ The tested desktop Chromium workflows pass after the fixes below. The production
 ## Fixes completed
 
 - Changing paper templates now preserves artwork and supports undo. Starting a new document remains a separate action with an unsaved-changes confirmation.
-- PNG export now renders text successfully using native SVG text. The editor, SVG, PNG, and print share text wrapping. PNG files record the selected 300, 600, or 1200 DPI in their density metadata.
+- PNG export now renders text successfully using native SVG text. The editor, PNG/JPEG export, and print share text wrapping. PNG files record the selected 300, 600, or 1200 DPI in their density metadata.
 - Print layout uses physical dimensions independently of editor zoom, including correct rotation origins for cropped images. Printing waits for fonts and images to load.
 - Crop changes preserve source-image positioning when rotated. Minimum-size resizing preserves locked proportions. Group centering accounts for rotated bounds.
-- The toolbar wraps across desktop, tablet, and phone widths. Project and export menus expose all file operations, including the previously missing SVG download. Buttons use a shared SVG icon set.
+- The toolbar wraps across desktop, tablet, and phone widths. Project and export menus expose all file operations. SVG download was removed; exports are PNG, JPEG, and print / PDF. Buttons use a shared SVG icon set.
 - Inspector controls now follow the installed DaisyUI version's layout requirements. Theme contrast, selected layers, empty-page guidance, and keyboard focus handling were improved.
 - Image editing uses a figure accessibility role so its rotation control remains exposed. Dialogs and the mobile inspector manage keyboard focus.
 - Text updates immediately and groups continuous typing into one undo step. Save shortcuts commit pending fields. Failed saves explain how to download a JSON backup.
@@ -30,9 +30,9 @@ The tested desktop Chromium workflows pass after the fixes below. The production
 | axe WCAG A/AA checks | 20 screen states, 0 reported violations |
 | Git whitespace check | Passed |
 
-The regression suite covers crop and resize geometry, rotation snapping, group alignment, undo/redo, selection operations, persistence and quota failures, JSON validation/round-tripping, concurrent import protection, text wrapping, SVG output, and PNG metadata.
+The regression suite covers crop and resize geometry, rotation snapping, group alignment, undo/redo, selection operations, persistence and quota failures, JSON validation/round-tripping, concurrent import protection, text wrapping, page rendering, and PNG metadata.
 
-The browser suite decodes PNG, JPEG, WebP, and SVG; rejects corrupt or unsupported images; validates layered SVG with editable text; and checks PNG dimensions, density metadata, and actual image/text pixels at all three export resolutions. High-resolution tests use a small page; oversized canvas choices are disabled for larger pages.
+The browser suite decodes PNG, JPEG, WebP, and SVG; rejects corrupt or unsupported images; and checks PNG dimensions, density metadata, and actual image/text pixels at all three export resolutions. High-resolution tests use a small page; oversized canvas choices are disabled for larger pages.
 
 Accessibility checks cover page, rectangle, text, image and crop inspectors, page settings, project/export menus, shortcuts, and unsaved-changes dialogs in both themes. These automated checks do not replace screen-reader and keyboard usability testing.
 
@@ -54,7 +54,7 @@ Checked in Chromium using the development server and production preview:
 3. Check dragging, cropping, and the inspector on real iOS and Android devices. Narrow viewport layouts were checked, but physical touch hardware was not.
 4. Print a measured sample on a physical printer with scaling, margins, and headers disabled. PDF dimensions were verified; printer-driver behavior was not.
 
-Browser storage remains device- and origin-specific. Keep the JSON backup guidance visible. Font availability can affect SVG files opened elsewhere; custom font embedding is not supported.
+Browser storage remains device- and origin-specific. Keep the JSON backup guidance visible. Custom font embedding is not supported.
 
 ## Reproduce the checks
 

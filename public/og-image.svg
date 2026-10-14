@@ -43,7 +43,7 @@
   <text x="372" y="292" font-family="Fira Sans, DejaVu Sans, sans-serif" font-weight="700" font-size="92" fill="#F8FAFC" letter-spacing="-2.5">TinyCut</text>
   <text x="372" y="358" font-family="Fira Sans, DejaVu Sans, sans-serif" font-weight="600" font-size="34" fill="#F8FAFC">Free print layout editor</text>
   <text x="372" y="414" font-family="Fira Sans, DejaVu Sans, sans-serif" font-weight="400" font-size="26" fill="#94A3B8">Place, crop, and size images in millimeters.</text>
-  <text x="372" y="456" font-family="Fira Sans, DejaVu Sans, sans-serif" font-weight="400" font-size="26" fill="#94A3B8">Export SVG, JPEG, PNG, or PDF — files stay in your browser.</text>
+  <text x="372" y="456" font-family="Fira Sans, DejaVu Sans, sans-serif" font-weight="400" font-size="26" fill="#94A3B8">Export JPEG, PNG, or PDF — files stay in your browser.</text>
   <rect x="0" y="614" width="600" height="16" fill="#F5A524"/>
   <rect x="600" y="614" width="600" height="16" fill="#6657F6"/>
 </svg>

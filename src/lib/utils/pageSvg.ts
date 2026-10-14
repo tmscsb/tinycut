@@ -1,7 +1,11 @@
 import type { DocumentState, DocumentItem, ImageItem, ShapeItem, TextItem } from "../types/document.ts";
 import { layoutText } from "./textLayout.ts";
 
-export function exportDocumentAsSvg(
+/**
+ * Renders the page as an SVG in millimetre coordinates. It is the single
+ * rendering source for PNG/JPEG export and printing (PDF).
+ */
+export function renderDocumentSvg(
   state: DocumentState,
   options?: { width?: string; height?: string },
 ): string {
@@ -23,7 +27,6 @@ export function exportDocumentAsSvg(
   overflow="hidden"
   xmlns="http://www.w3.org/2000/svg"
   xmlns:xlink="http://www.w3.org/1999/xlink"
-  xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
 >
   <rect width="${page.widthMm}" height="${page.heightMm}" fill="white" />
   ${inner}
@@ -39,7 +42,7 @@ function renderItemToSvg(item: DocumentItem, index: number): string {
   const transform = item.rotationDeg
     ? ` transform="rotate(${item.rotationDeg} ${centerX} ${centerY})"`
     : "";
-  return `\n  <g id="layer-${index}-${safeId(item.id)}" data-layer-index="${index}" data-item-type="${item.type}" inkscape:groupmode="layer" inkscape:label="${escapeXml(item.name)}"${transform}>${content}\n  </g>`;
+  return `\n  <g${transform}>${content}\n  </g>`;
 }
 
 function safeId(value: string): string {

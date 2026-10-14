@@ -1,7 +1,7 @@
 {
   "name": "TinyCut",
   "short_name": "TinyCut",
-  "description": "Free print layout editor in your browser. Crop and size images in millimeters, then export SVG, JPEG, PNG, or PDF. No account — files stay on your device.",
+  "description": "Free print layout editor in your browser. Crop and size images in millimeters, then export JPEG, PNG, or PDF. No account — files stay on your device.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
