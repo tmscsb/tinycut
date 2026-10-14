@@ -107,7 +107,8 @@
         {/each}
       </div>
 
-      <div class="modal-action">
+      <div class="modal-action items-center">
+        <span class="mr-auto text-xs text-base-content/50 tabular-nums">TinyCut v{__APP_VERSION__}</span>
         <button class="btn btn-primary" bind:this={closeButton} onclick={hideShortcuts}>Got it</button>
       </div>
     </div>

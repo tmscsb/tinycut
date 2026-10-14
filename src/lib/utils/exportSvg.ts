@@ -63,6 +63,26 @@ function renderTextToSvg(item: TextItem): string {
 }
 
 function renderImageToSvg(item: ImageItem, index: number): string {
+  return renderImageContentToSvg(item, index) + renderImageBorderToSvg(item);
+}
+
+function renderImageBorderToSvg(item: ImageItem): string {
+  const sw = Math.min(item.borderWidthMm, item.widthMm / 2, item.heightMm / 2);
+  if (!(sw > 0)) return "";
+  return `
+  <rect
+    data-image-border="true"
+    x="${item.xMm + sw / 2}"
+    y="${item.yMm + sw / 2}"
+    width="${item.widthMm - sw}"
+    height="${item.heightMm - sw}"
+    fill="none"
+    stroke="${escapeXml(item.borderColor)}"
+    stroke-width="${sw}"
+  />`;
+}
+
+function renderImageContentToSvg(item: ImageItem, index: number): string {
   const crop = item.crop;
   const cropX = crop.left * item.naturalWidthPx;
   const cropY = crop.top * item.naturalHeightPx;

@@ -25,6 +25,8 @@
   const displayW = $derived(mmToPx(displayItem.widthMm, doc.zoom));
   const displayH = $derived(mmToPx(displayItem.heightMm, doc.zoom));
 
+  const borderPx = $derived(mmToPx(Math.min(item.borderWidthMm, displayItem.widthMm / 2, displayItem.heightMm / 2), doc.zoom));
+
   const cropViewX = $derived(item.crop.left * item.naturalWidthPx);
   const cropViewY = $derived(item.crop.top * item.naturalHeightPx);
   const cropViewW = $derived(cropFracW * item.naturalWidthPx);
@@ -107,6 +109,14 @@
         height={item.naturalHeightPx}
       />
     </svg>
+
+    {#if borderPx > 0}
+      <div
+        data-image-border
+        class="absolute inset-0 pointer-events-none"
+        style="box-shadow: inset 0 0 0 {borderPx}px {item.borderColor};"
+      ></div>
+    {/if}
 
     {#if selected && !cropMode}
       <div class="no-print absolute inset-0 border border-primary pointer-events-none"></div>

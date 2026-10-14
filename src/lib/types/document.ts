@@ -28,6 +28,9 @@ export type ImageItem = {
   rotationDeg: number;
   lockedAspectRatio: boolean;
   crop: ImageCrop;
+  /** Border drawn inside the image frame; 0 means no border. */
+  borderWidthMm: number;
+  borderColor: string;
 };
 
 export type ShapeType = "rect" | "ellipse" | "line";

@@ -305,6 +305,8 @@ export async function addImage(file: File): Promise<void> {
     rotationDeg: 0,
     lockedAspectRatio: true,
     crop: { left: 0, top: 0, right: 1, bottom: 1 },
+    borderWidthMm: 0,
+    borderColor: lastImageBorder.color,
   };
 
   pushUndo();
@@ -687,6 +689,46 @@ export function setLockedAspect(id: string, locked: boolean): void {
   if (!item || item.lockedAspectRatio === locked) return;
   pushUndo();
   item.lockedAspectRatio = locked;
+  markDirty();
+}
+
+// ── Image border ──────────────────────────────────────────────────────
+
+/** Last border used, so enabling a border on the next image reuses it. */
+const lastImageBorder = { widthMm: 2, color: "#000000" };
+
+function maxImageBorderMm(item: ImageItem): number {
+  return Math.min(item.widthMm, item.heightMm) / 2;
+}
+
+export function setImageBorderWidth(id: string, mm: number): void {
+  const item = getItemById(id);
+  if (!item || item.type !== "image" || !Number.isFinite(mm)) return;
+  const width = Math.max(0, Math.min(maxImageBorderMm(item), mm));
+  if (item.borderWidthMm === width) return;
+  pushUndo();
+  item.borderWidthMm = width;
+  if (width > 0) lastImageBorder.widthMm = width;
+  markDirty();
+}
+
+export function setImageBorderColor(id: string, color: string): void {
+  const item = getItemById(id);
+  if (!item || item.type !== "image" || item.borderColor === color) return;
+  pushUndo();
+  item.borderColor = color;
+  lastImageBorder.color = color;
+  markDirty();
+}
+
+export function toggleImageBorder(id: string, enabled: boolean): void {
+  const item = getItemById(id);
+  if (!item || item.type !== "image") return;
+  if (!enabled) { setImageBorderWidth(id, 0); return; }
+  if (item.borderWidthMm > 0) return;
+  pushUndo();
+  item.borderWidthMm = Math.min(maxImageBorderMm(item), lastImageBorder.widthMm);
+  item.borderColor = lastImageBorder.color;
   markDirty();
 }
 

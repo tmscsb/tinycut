@@ -12,8 +12,11 @@
     enterCutMode,
     exitCropMode,
     resetCrop,
+    setImageBorderColor,
+    setImageBorderWidth,
+    toggleImageBorder,
   } from "../stores/documentStore.svelte.ts";
-  import { formatDisplay, parseInputToMm } from "../utils/units.ts";
+  import { displayValue, formatDisplay, parseInputToMm } from "../utils/units.ts";
   import CropPanel from "./CropPanel.svelte";
   import SelectionActions from "./SelectionActions.svelte";
   import RotationControl from "./RotationControl.svelte";
@@ -127,6 +130,44 @@
   </div>
 
   <RotationControl id={item.id} rotationDeg={item.rotationDeg} />
+
+  <!-- Border -->
+  <div>
+    <label class="label cursor-pointer justify-start gap-2 py-1 mb-1">
+      <input
+        type="checkbox"
+        class="toggle toggle-sm toggle-primary"
+        checked={item.borderWidthMm > 0}
+        onchange={(e) => toggleImageBorder(item.id, (e.target as HTMLInputElement).checked)}
+      />
+      <span class="text-xs font-medium text-base-content/65 uppercase tracking-wide">Border</span>
+    </label>
+    {#if item.borderWidthMm > 0}
+      <div class="flex items-end gap-2">
+        <input
+          type="color"
+          class="w-10 h-8 rounded cursor-pointer"
+          value={item.borderColor}
+          onchange={(e) => setImageBorderColor(item.id, (e.target as HTMLInputElement).value)}
+          title="Border color"
+          aria-label="Border color"
+        />
+        <div class="flex-1">
+          <label class="block text-xs text-base-content/60 mb-1" for={`img-bw-${item.id}`}>Border width ({doc.unit})</label>
+          <input
+            id={`img-bw-${item.id}`}
+            type="number"
+            class="input input-bordered input-sm w-full"
+            min="0"
+            step={doc.unit === "cm" ? "0.05" : "0.5"}
+            value={displayValue(item.borderWidthMm, doc.unit)}
+            onchange={(e) => setImageBorderWidth(item.id, parseInputToMm(parseFloat((e.target as HTMLInputElement).value) || 0, doc.unit))}
+          />
+        </div>
+      </div>
+      <p class="text-xs text-base-content/60 mt-1">Drawn inside the image edge, so the size stays the same.</p>
+    {/if}
+  </div>
 
   <!-- Crop & Cut -->
   <div class="pt-3 border-t border-base-300">

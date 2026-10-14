@@ -23,6 +23,8 @@ const state = {
     rotationDeg: 0,
     lockedAspectRatio: true,
     crop: { left: 0, top: 0, right: 1, bottom: 1 },
+    borderWidthMm: 0,
+    borderColor: "#000000",
   }],
   selectedItemId: null,
   selectedItemIds: [],
@@ -60,4 +62,14 @@ test("raster SVG can be sized in target pixels without changing the viewBox", ()
   assert.match(svg, /width="2480px"/);
   assert.match(svg, /height="3508px"/);
   assert.match(svg, /viewBox="0 0 210 297"/);
+});
+
+test("draws an image border inside the image frame", () => {
+  const bordered = {
+    ...state,
+    items: [{ ...state.items[0], borderWidthMm: 4, borderColor: "#ff0000" }],
+  } as DocumentState;
+  const svg = exportDocumentAsSvg(bordered);
+  assert.match(svg, /data-image-border="true"\s+x="12"\s+y="22"\s+width="76"\s+height="76"\s+fill="none"\s+stroke="#ff0000"\s+stroke-width="4"/);
+  assert.doesNotMatch(exportDocumentAsSvg(state), /data-image-border/);
 });

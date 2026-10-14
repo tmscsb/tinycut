@@ -104,6 +104,8 @@ function normalizeImage(
       right: finite(cropValue.right, 1),
       bottom: finite(cropValue.bottom, 1),
     }),
+    borderWidthMm: Math.max(0, Math.min(Math.min(common.widthMm, common.heightMm) / 2, finite(value.borderWidthMm, 0))),
+    borderColor: color(value.borderColor, "#000000"),
   };
   if (!/^data:image\/(png|jpeg|webp|svg\+xml)(;[^,]*)?,/i.test(item.src)) throw new Error("Invalid image source");
   return legacy ? migrateLegacyCropGeometry(item) : item;

@@ -164,6 +164,7 @@
       <img src="/tinycut-icon.svg" alt="" width="28" height="28" />
       <span>TinyCut</span>
       <span class="toolbar-tagline">Layouts made to print</span>
+      <span class="toolbar-version" title="Version (build date and commit)">v{__APP_VERSION__}</span>
     </h1>
     <div class="toolbar-spacer"></div>
     <input class="input input-sm project-name" bind:value={doc.name} maxlength="80" autocomplete="off" aria-label="Layout name" title="Layout name" onchange={(e) => setProjectName(e.currentTarget.value)} onblur={(e) => setProjectName(e.currentTarget.value)} />
