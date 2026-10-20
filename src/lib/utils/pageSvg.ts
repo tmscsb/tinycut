@@ -1,5 +1,11 @@
 import type { DocumentState, DocumentItem, ImageItem, ShapeItem, TextItem } from "../types/document.ts";
 import { layoutText } from "./textLayout.ts";
+import { assetUrl } from "./assets.ts";
+
+/** Blob URLs work in the live DOM; an SVG rasterized through <img> needs data URLs. */
+export type ImageHref = (item: ImageItem) => string;
+
+const blobHref: ImageHref = (item) => assetUrl(item.assetId);
 
 /**
  * Renders the page as an SVG in millimetre coordinates. It is the single
@@ -7,16 +13,17 @@ import { layoutText } from "./textLayout.ts";
  */
 export function renderDocumentSvg(
   state: DocumentState,
-  options?: { width?: string; height?: string },
+  options?: { width?: string; height?: string; imageHref?: ImageHref },
 ): string {
   const { page, items } = state;
   const width = options?.width ?? `${page.widthMm}mm`;
   const height = options?.height ?? `${page.heightMm}mm`;
 
+  const imageHref = options?.imageHref ?? blobHref;
   let inner = "";
 
   for (const [index, item] of items.entries()) {
-    inner += renderItemToSvg(item, index);
+    inner += renderItemToSvg(item, index, imageHref);
   }
 
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -33,9 +40,9 @@ export function renderDocumentSvg(
 </svg>`;
 }
 
-function renderItemToSvg(item: DocumentItem, index: number): string {
+function renderItemToSvg(item: DocumentItem, index: number, imageHref: ImageHref): string {
   const content = item.type === "image"
-    ? renderImageToSvg(item, index)
+    ? renderImageToSvg(item, index, imageHref(item))
     : item.type === "shape" ? renderShapeToSvg(item) : renderTextToSvg(item);
   const centerX = item.xMm + item.widthMm / 2;
   const centerY = item.yMm + item.heightMm / 2;
@@ -65,8 +72,8 @@ function renderTextToSvg(item: TextItem): string {
   </svg>`;
 }
 
-function renderImageToSvg(item: ImageItem, index: number): string {
-  return renderImageContentToSvg(item, index) + renderImageBorderToSvg(item);
+function renderImageToSvg(item: ImageItem, index: number, href: string): string {
+  return renderImageContentToSvg(item, index, href) + renderImageBorderToSvg(item);
 }
 
 function renderImageBorderToSvg(item: ImageItem): string {
@@ -85,7 +92,7 @@ function renderImageBorderToSvg(item: ImageItem): string {
   />`;
 }
 
-function renderImageContentToSvg(item: ImageItem, index: number): string {
+function renderImageContentToSvg(item: ImageItem, index: number, href: string): string {
   const crop = item.crop;
   const cropX = crop.left * item.naturalWidthPx;
   const cropY = crop.top * item.naturalHeightPx;
@@ -107,8 +114,8 @@ function renderImageContentToSvg(item: ImageItem, index: number): string {
       </clipPath>
     </defs>
     <image
-      href="${escapeXml(item.src)}"
-      xlink:href="${escapeXml(item.src)}"
+      href="${escapeXml(href)}"
+      xlink:href="${escapeXml(href)}"
       x="${imageX}"
       y="${imageY}"
       width="${item.naturalWidthPx * scaleX}"
@@ -121,8 +128,8 @@ function renderImageContentToSvg(item: ImageItem, index: number): string {
 
   return `
   <image
-    href="${escapeXml(item.src)}"
-    xlink:href="${escapeXml(item.src)}"
+    href="${escapeXml(href)}"
+    xlink:href="${escapeXml(href)}"
     x="${item.xMm}"
     y="${item.yMm}"
     width="${item.widthMm}"

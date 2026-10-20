@@ -14,7 +14,8 @@ button.onclick=async()=>{
   results.textContent+=JSON.stringify({name,violations:result.violations.map(v=>({id:v.id,impact:v.impact,description:v.description,nodes:v.nodes.map(n=>({target:n.target,summary:n.failureSummary}))}))},null,2)+'\n';
  };
  const clickText=(text)=>{
-  const target=[...doc.querySelectorAll('button')].find(button=>button.textContent.trim()===text);
+  const buttons=[...doc.querySelectorAll('button')];
+  const target=buttons.find(button=>button.textContent.trim()===text)??buttons.find(button=>button.textContent.trim().startsWith(text));
   if(!target) throw new Error('Missing button: '+text);
   target.click();
  };
@@ -36,13 +37,13 @@ button.onclick=async()=>{
    await wait(); await check(prefix+'Image inspector');
    clickText('Crop Image'); await check(prefix+'Crop inspector');
    clickText('Done Cropping'); await wait();
+   clickText('Cut from Image'); await check(prefix+'Cut inspector');
+   clickText('Done'); await wait();
+   doc.defaultView.dispatchEvent(new KeyboardEvent('keydown',{key:'a',ctrlKey:true,bubbles:true})); await check(prefix+'Multi-selection inspector');
    clickText('Page settings'); await check(prefix+'Page settings');
    doc.querySelector('[aria-label="Project menu"]').click(); await check(prefix+'Project menu');
-   clickText('Open…'); await check(prefix+'Open layouts dialog');
+   clickText('Your layouts…'); await check(prefix+'Your layouts dialog');
    clickText('Close');
-   doc.querySelector('[aria-label="Project menu"]').click();
-   clickText('New document'); await check(prefix+'Unsaved changes dialog');
-   clickText('Cancel');
    doc.querySelector('.theme-control').click(); await wait();
   }
   status.textContent='Accessibility checks complete';

@@ -11,10 +11,11 @@ A browser-based layout tool for placing images on printable pages at exact physi
 - Resize images to exact physical dimensions in mm or cm
 - Lock/unlock aspect ratio when resizing
 - Crop images with numeric controls and visual crop handles
-- Cut pieces from an image without trimming the original, so you can take several details from one photo
+- Cut pieces from an image without trimming the original: drag a box anywhere on the photo for each piece
 - Create rectangles, circles, lines, and editable text
 - Rotate, resize, style, reorder, duplicate, and delete items
-- Shift-select and move, duplicate, or delete multiple items together
+- Select several items with Shift-click, a drag box, or Ctrl/Cmd + A, then move, resize to one width or height, duplicate, or delete them together
+- Copy, cut, and paste items with Ctrl/Cmd + C / X / V, including between tabs, and paste images copied from other apps
 - Layers panel with stacking controls
 - Configurable grid, snap-to-grid, and center guides
 - Fit the full page into the workspace and center selected items precisely on the page
@@ -24,9 +25,9 @@ A browser-based layout tool for placing images on printable pages at exact physi
 - Export JPEG or PNG at selectable 300, 600, or 1200 DPI, or print / save as PDF
 - Add a configurable border (width and color) to images
 - Print at correct physical page size
-- Save layouts in this browser (origin private file system), each with its own id
-- Open a new tab to start from an empty page; refresh restores the layout in that tab after Save
-- Import/export projects as JSON
+- Layouts save automatically in this browser (origin private file system), images included and stored once
+- Open a new tab to start from an empty page; refresh restores the layout in that tab
+- Download a single-file backup (.json with images inside) and import it on another device
 - Light and dark DaisyUI themes
 
 ## Tech Stack
@@ -40,7 +41,7 @@ A browser-based layout tool for placing images on printable pages at exact physi
 
 ## Privacy and cost
 
-TinyCut is free to use and has no account, backend, ads, analytics, or paid features. Images and project content are processed in the browser. Saving uses this browser's origin private file system (files the browser keeps for this site on this device). Clearing site data removes those copies. Download project JSON files for durable backups and transferring work to another device. A hosting provider may log ordinary page requests separately from the application.
+TinyCut is free to use and has no account, backend, ads, analytics, or paid features. Images and project content are processed in the browser. Layouts save automatically to this browser's origin private file system (files the browser keeps for this site on this device). Clearing site data removes them. Download a backup file for durable copies and for moving work to another device. A hosting provider may log ordinary page requests separately from the application.
 
 ## Install & Run
 
@@ -90,8 +91,8 @@ When you type values in the sidebar, you can switch between mm and cm display. I
 5. **Add artwork**: Use the rectangle, circle, line, and text tools in the toolbar.
 6. **Lock aspect ratio**: Toggle the checkbox in the properties panel to preserve proportions.
 7. **Crop**: Click "Crop Image" and trim visually or enter the amount removed from each edge.
-8. **Cut**: Click "Cut from Image" and select a region the same way as crop. Each cut makes a new object and leaves the original so you can take more details. Press Esc when you are done.
-9. **Arrange**: Shift-click items or layers for multi-selection; use the layer arrows or context menu for stacking.
+8. **Cut**: Click "Cut from Image" (or press X), then drag across the image to mark a piece. Drag inside the mark to move it or use its handles to resize, and press Enter to cut. Each cut makes a new object, keeps the original, and clears the mark so you can draw the next piece. Press Esc when you are done.
+9. **Arrange**: Shift-click items or layers, or drag a box over empty space, to select several. With several selected, the inspector sets one width or height for all of them, or matches the last item you selected. Use the layer arrows or context menu for stacking.
 10. **Align**: Use "Center X" or "Center Y" in the inspector to center one item or an entire selection while preserving its internal layout.
 11. **Export/Print**: Open Export to download a JPEG or PNG at a chosen DPI, or print / save as PDF. JPEG is the default for smaller files; PNG is lossless and records the chosen physical print density.
 
@@ -100,9 +101,11 @@ When you type values in the sidebar, you can switch between mm and cm display. I
 | Key | Action |
 |-----|--------|
 | Delete / Backspace | Delete selected items |
+| Ctrl/Cmd + C / X / V | Copy, cut, and paste items (works across tabs; also pastes copied images) |
 | Ctrl/Cmd + D | Duplicate selected items |
-| Ctrl/Cmd + S | Save in this browser |
-| Ctrl/Cmd + O | Open a saved layout |
+| Ctrl/Cmd + A | Select everything on the page |
+| Ctrl/Cmd + S | Save now (layouts also save automatically) |
+| Ctrl/Cmd + O | Your layouts |
 | Ctrl/Cmd + N | New A4 document |
 | Ctrl/Cmd + Z / Shift + Z | Undo / redo |
 | Ctrl/Cmd + Y | Redo |
@@ -113,17 +116,26 @@ When you type values in the sidebar, you can switch between mm and cm display. I
 | R / Shift + R | Rotate the primary item by +90° / −90° |
 | Ctrl/Cmd + mouse wheel | Zoom around the pointer |
 | C | Crop the selected image |
-| X | Cut a piece from the selected image |
+| X | Cut pieces from the selected image (drag to mark each one) |
 | Escape | Deselect / exit crop or cut mode |
 | Enter | Apply crop, or cut a piece and keep cutting |
 
 ## Saving layouts
 
-Each tab is its own layout. Opening TinyCut in a new tab always starts with an empty page. The address bar gets a layout id (`#/p/…`) so refreshing **this** tab can restore it after you press Save.
+Each tab is its own layout. Opening TinyCut in a new tab always starts with an empty page. The address bar gets a layout id (`#/p/…`) so refreshing **this** tab restores it.
 
-Save stores the layout in this browser's origin private file system — a private folder the browser keeps for this site, not your Downloads folder. Images are stored as separate files next to a small JSON description, so photo layouts are not stuffed into `localStorage`. Clearing site data removes those files.
+Layouts save automatically shortly after each change. The toolbar shows "Saved", "Saving…", or "Not saved · Retry". An empty new tab writes nothing until you add something, so stray tabs do not fill the list. A layout can be open in only one tab at a time, so two tabs never overwrite each other.
 
-Project → Open lists layouts saved in this browser. Download a project JSON file when you want a backup or to move the layout to another device.
+Everything lives in this browser's origin private file system, a private folder the browser keeps for this site (not your Downloads folder):
+
+```
+tinycut/projects/<layout id>/project.json   page, items, and metadata (small)
+tinycut/assets/<sha-256>                    image bytes, shared by every layout
+```
+
+Images are content-addressed, so a photo used in several layouts, duplicates, or cut pieces is stored once. While editing, images are held as blobs rather than base64 text, which keeps undo history and saving fast. Image files no saved layout uses are cleaned up after a day. Layouts saved by older versions are upgraded the first time they open.
+
+Project → Your layouts lists what is stored, with item counts, image sizes, and total storage use, and can ask the browser not to clear the storage when space runs low. Project → Make a copy saves the layout under a new id. Download backup creates one `.json` file with the images embedded, for another browser or device; Import backup opens it. Clearing site data deletes saved layouts.
 
 ## Printing
 
@@ -145,7 +157,10 @@ src/
       units.ts               mm/px/cm conversions
       ids.ts                 Unique ID generation
       image.ts               File loading & dimension detection
-      projectStorage.ts      Origin private file system save/load
+      assets.ts              Content-addressed image registry (blob URLs, hashing)
+      projectStorage.ts      Origin private file system layout, upgrade, cleanup
+      layoutLock.ts          One tab per layout (Web Locks)
+      clipboard.ts           Copy/paste payload format
       pageSvg.ts             Page renderer used by image export and print
     components/
       TopToolbar.svelte      Toolbar with page, zoom, unit controls
@@ -193,10 +208,11 @@ The build command installs dependencies from the committed `bun.lock` and builds
 
 ## Known Limitations
 
-- Multi-selection supports group movement, nudging, duplication, and deletion, but not marquee selection or group resizing.
+- Multi-selection sets one width or height for every item, but there is no handle-drag resize of a whole group.
+- Copying between tabs uses the system clipboard. When a browser does not fire clipboard events without a text selection, Ctrl/Cmd + V pastes items copied in the same tab only.
 - Text uses a small browser-safe font list; custom font embedding is not available.
 - Images are limited to 20 MB and 64 megapixels; project imports to 50 MB and 1,000 items; paper dimensions to 2,000 mm per side.
-- Browser storage quotas still apply to layouts saved in this browser. Quota failures are reported in the UI; download a project JSON as a backup.
+- Browser storage quotas still apply to layouts saved in this browser. Save failures show "Not saved · Retry" in the toolbar; download a backup to keep the work.
 - PNG resolutions that would require an unsafe browser canvas allocation are disabled for the current page size; use a lower DPI or a smaller page.
 - Undo keeps up to 50 operations, with a 64 MB snapshot budget (plus the most recent operation). Large embedded images reduce the available undo depth.
 - Print margins and scaling must remain disabled in the browser print dialog; TinyCut supplies the exact CSS page size.

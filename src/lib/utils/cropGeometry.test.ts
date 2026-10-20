@@ -9,7 +9,9 @@ import {
   getImageSourceFrame,
   migrateLegacyCropGeometry,
   normalizeCrop,
+  regionFromPoints,
   screenDeltaToLocalCropPercent,
+  screenPointToLocalFraction,
 } from "./cropGeometry.ts";
 import { renderDocumentSvg } from "./pageSvg.ts";
 
@@ -18,7 +20,7 @@ function image(overrides: Partial<ImageItem> = {}): ImageItem {
     id: "image-1",
     type: "image",
     name: "sample.png",
-    src: "data:image/png;base64,AA==",
+    assetId: "a".repeat(64),
     xMm: 10,
     yMm: 20,
     widthMm: 100,
@@ -164,8 +166,8 @@ test("page render includes every image in document layer order", () => {
     name: "Untitled",
     page: { templateId: "custom", name: "Custom", widthMm: 100, heightMm: 100 },
     items: [
-      image({ id: "back", name: "Back & base", src: "data:image/png;base64,AAAA" }),
-      image({ id: "front", name: "Front", src: "data:image/jpeg;base64,BBBB" }),
+      image({ id: "back", name: "Back & base", assetId: "b".repeat(64) }),
+      image({ id: "front", name: "Front", assetId: "f".repeat(64) }),
     ],
     selectedItemId: "back",
     selectedItemIds: ["back"],
@@ -179,10 +181,10 @@ test("page render includes every image in document layer order", () => {
     dirty: false,
   } satisfies DocumentState;
 
-  const svg = renderDocumentSvg(state);
+  const svg = renderDocumentSvg(state, { imageHref: (item) => `data:image/png;base64,${item.id}&` });
   assert.equal(svg.match(/<image\s/g)?.length, 2);
-  assert.ok(svg.indexOf("base64,AAAA") < svg.indexOf("base64,BBBB"));
-  assert.match(svg, /xlink:href="data:image\/jpeg;base64,BBBB"/);
+  assert.ok(svg.indexOf("base64,back") < svg.indexOf("base64,front"));
+  assert.match(svg, /xlink:href="data:image\/png;base64,front&amp;"/);
 });
 
 test("page render preserves rotation and escapes text", () => {
@@ -246,4 +248,18 @@ test("cropping a rotated image keeps source pixels fixed in world space", () => 
     const reset = { ...cropped, ...applyCropToImageFrame(cropped, {left:0,top:0,right:1,bottom:1}) };
     assert.ok(Math.abs(reset.xMm-original.xMm)<1e-10 && Math.abs(reset.yMm-original.yMm)<1e-10);
   }
+});
+
+test("a pointer maps to fractions of the unrotated image", () => {
+  const bounds = { left: 100, top: 50, width: 200, height: 100 };
+  assert.deepEqual(screenPointToLocalFraction(150, 75, bounds, 0, 200, 100), { x: 0.25, y: 0.25 });
+  // Rotated a quarter turn, a 200×100 item occupies a 100×200 box with the same centre.
+  const turned = { left: 150, top: 0, width: 100, height: 200 };
+  const point = screenPointToLocalFraction(250, 50, turned, 90, 200, 100);
+  assert.ok(Math.abs(point.x - 0.25) < 1e-9 && Math.abs(point.y - 0) < 1e-9, JSON.stringify(point));
+});
+
+test("a dragged region is ordered and clamped whichever way it was drawn", () => {
+  assert.deepEqual(regionFromPoints({ x: 0.8, y: 0.9 }, { x: 0.2, y: 0.1 }), { left: 0.2, top: 0.1, right: 0.8, bottom: 0.9 });
+  assert.deepEqual(regionFromPoints({ x: -0.5, y: 0.5 }, { x: 1.5, y: 0.6 }), { left: 0, top: 0.5, right: 1, bottom: 0.6 });
 });

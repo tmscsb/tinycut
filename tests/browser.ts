@@ -1,13 +1,18 @@
 import { exportDocumentAsPng, exportDocumentAsRaster } from '../src/lib/utils/exportPng.ts';
 import { printSurfaceInnerHtml } from '../src/lib/utils/printDocument.ts';
 import { renderDocumentSvg } from '../src/lib/utils/pageSvg.ts';
-import { loadImageFile } from '../src/lib/utils/image.ts';
+import { loadImageFile as decodeImageFile } from '../src/lib/utils/image.ts';
+import { registerAsset } from '../src/lib/utils/assets.ts';
 import { normalizeDocument } from '../src/lib/utils/documentState.ts';
 import type { DocumentState, TextItem } from '../src/lib/types/document.ts';
 
 const results = document.querySelector('#results')!;
 const status = document.querySelector('#status')!;
 const preview = document.querySelector('#preview')!;
+async function loadImageFile(file: File) {
+  const { blob, mime, naturalWidthPx, naturalHeightPx } = await decodeImageFile(file);
+  return { assetId: (await registerAsset(blob, mime)).id, naturalWidthPx, naturalHeightPx };
+}
 function assert(condition: unknown, message: string): asserts condition { if (!condition) throw new Error(message); }
 function toBlob(canvas: HTMLCanvasElement, type: string): Promise<Blob> { return new Promise(resolve => canvas.toBlob(blob => resolve(blob!), type)); }
 async function check(name: string, run: () => Promise<void> | void) {

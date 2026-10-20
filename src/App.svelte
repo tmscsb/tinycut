@@ -26,7 +26,17 @@
     getItem,
     requestNewDocument,
     setItemRotation,
+    selectAll,
+    copySelection,
+    cutSelection,
+    pasteItems,
+    hasClipboardItems,
+    takePendingSystemCopy,
+    addImage,
+    hasUnsavedWork,
+    flushAutosave,
   } from "./lib/stores/documentStore.svelte.ts";
+  import { CLIPBOARD_MIME, clipboardLabel, parseClipboardPayload } from "./lib/utils/clipboard.ts";
   import {
     ui,
     initTheme,
@@ -39,6 +49,7 @@
     closeMobilePanel,
     setCompactLayout,
     requestFitPage,
+    showNotice,
   } from "./lib/stores/uiStore.svelte.ts";
   import { onMount } from "svelte";
   import { trapTabFocus } from "./lib/utils/focus.ts";
@@ -81,6 +92,70 @@
         t.isContentEditable
       );
     }
+
+    /** Clipboard shortcuts act on layout items unless the user is working with text. */
+    function itemClipboardActive(): boolean {
+      if (ui.showUnsavedWarning || ui.showShortcuts || ui.showOpenProjects || ui.contextMenu) return false;
+      if (isInputFocused()) return false;
+      const selection = window.getSelection();
+      return !selection || selection.isCollapsed;
+    }
+
+    // Ctrl+C/X/V work from keydown, because not every browser fires clipboard
+    // events when nothing is selected. When the browser does fire them, the
+    // events also put the items on the system clipboard for other tabs.
+    let pasteEventSeen = false;
+
+    function handleClipboardKey(key: "c" | "x" | "v") {
+      if (!itemClipboardActive()) return;
+      if (key === "v") {
+        pasteEventSeen = false;
+        setTimeout(() => { if (!pasteEventSeen && itemClipboardActive()) void pasteItems(); }, 0);
+        return;
+      }
+      if (key === "x") cutSelection();
+      else copySelection();
+    }
+
+    function handleCopy(e: ClipboardEvent, cut: boolean) {
+      const payload = takePendingSystemCopy()
+        ?? (itemClipboardActive() ? (cut ? cutSelection() : copySelection()) : null);
+      takePendingSystemCopy();
+      if (!payload) return;
+      e.preventDefault();
+      e.clipboardData?.setData(CLIPBOARD_MIME, JSON.stringify(payload));
+      e.clipboardData?.setData("text/plain", clipboardLabel(payload));
+    }
+
+    async function handlePaste(e: ClipboardEvent) {
+      pasteEventSeen = true;
+      if (!itemClipboardActive()) return;
+      const data = e.clipboardData;
+      const payload = parseClipboardPayload(data?.getData(CLIPBOARD_MIME) ?? "");
+      if (payload) {
+        e.preventDefault();
+        await pasteItems(payload);
+        return;
+      }
+      const images = Array.from(data?.files ?? []).filter((file) => file.type.startsWith("image/"));
+      if (images.length) {
+        e.preventDefault();
+        for (const file of images) {
+          try { await addImage(file); }
+          catch (error) { showNotice(error instanceof Error ? error.message : "The pasted image could not be added", "error"); }
+        }
+        return;
+      }
+      // Some browsers drop custom clipboard types; our label still identifies our own copy.
+      if (hasClipboardItems() && (data?.getData("text/plain") ?? "").startsWith("TinyCut: ")) {
+        e.preventDefault();
+        await pasteItems();
+      }
+    }
+
+    const onCopy = (e: ClipboardEvent) => handleCopy(e, false);
+    const onCut = (e: ClipboardEvent) => handleCopy(e, true);
+    const onPaste = (e: ClipboardEvent) => { void handlePaste(e); };
 
     function handleKeydown(e: KeyboardEvent) {
       if (ui.showUnsavedWarning) {
@@ -154,6 +229,17 @@
       if (mod && e.key.toLowerCase() === "d") {
         e.preventDefault();
         duplicateSelectedItem();
+        return;
+      }
+
+      if (mod && !e.altKey && !e.shiftKey && ["c", "x", "v"].includes(e.key.toLowerCase())) {
+        handleClipboardKey(e.key.toLowerCase() as "c" | "x" | "v");
+        return;
+      }
+
+      if (mod && e.key.toLowerCase() === "a") {
+        e.preventDefault();
+        selectAll();
         return;
       }
 
@@ -265,10 +351,15 @@
     }
 
     function handleBeforeUnload(e: BeforeUnloadEvent) {
-      if (doc.dirty) {
+      if (hasUnsavedWork()) {
+        void flushAutosave();
         e.preventDefault();
         e.returnValue = "";
       }
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "hidden") void flushAutosave();
     }
 
     function onBeforePrint() {
@@ -279,12 +370,20 @@
     }
 
     window.addEventListener("keydown", handleKeydown);
+    document.addEventListener("copy", onCopy);
+    document.addEventListener("cut", onCut);
+    document.addEventListener("paste", onPaste);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("hashchange", requestLoadFromHash);
     window.addEventListener("beforeunload", handleBeforeUnload);
     window.addEventListener("beforeprint", onBeforePrint);
     window.addEventListener("afterprint", onAfterPrint);
     return () => {
       window.removeEventListener("keydown", handleKeydown);
+      document.removeEventListener("copy", onCopy);
+      document.removeEventListener("cut", onCut);
+      document.removeEventListener("paste", onPaste);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("hashchange", requestLoadFromHash);
       window.removeEventListener("beforeunload", handleBeforeUnload);
       window.removeEventListener("beforeprint", onBeforePrint);
@@ -338,9 +437,9 @@
 {#if ui.showUnsavedWarning}
   <div class="modal modal-open" role="dialog" aria-modal="true" aria-labelledby="unsaved-title" tabindex="-1" bind:this={unsavedDialog} onkeydown={handleUnsavedDialogKeydown}>
     <div class="modal-box">
-      <h3 id="unsaved-title" class="text-lg font-bold">Unsaved Changes</h3>
+      <h3 id="unsaved-title" class="text-lg font-bold">This layout is not saved</h3>
       <p class="py-4 text-base-content/70">
-        You have unsaved changes that will be lost. Are you sure you want to continue?
+        The latest changes could not be saved in this browser and will be lost. Download a backup from the Project menu first if you want to keep them.
       </p>
       <div class="modal-action">
         <button class="btn btn-ghost" bind:this={unsavedCancelButton} onclick={cancelPendingAction}>Cancel</button>

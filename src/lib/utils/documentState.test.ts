@@ -92,7 +92,7 @@ test("rejects invalid image sources and dimensions", () => {
       id: "image",
       type: "image",
       name: "Remote",
-      src: "https://example.com/image.png",
+      assetId: "not-a-hash",
       xMm: 0,
       yMm: 0,
       widthMm: 10,

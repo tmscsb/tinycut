@@ -17,14 +17,21 @@ import { createId, createProjectId } from "../utils/ids.ts";
 import { loadImageFile } from "../utils/image.ts";
 import { confirmAction, showNotice, requestFitPage, showOpenProjects } from "./uiStore.svelte.ts";
 import {
+  collectUnusedAssets,
   deleteStoredProject,
   listStoredProjects,
+  loadStoredAssets,
   migrateLegacyLocalStorage,
   ProjectNotFoundError,
   readStoredProject,
+  requestPersistentStorage,
+  storeAssets,
   writeStoredProject,
   type StoredProjectMeta,
 } from "../utils/projectStorage.ts";
+import { embedImages, getAsset, ingestEmbeddedImages, loadedAssetIds, onAssetRegistered, registerAsset } from "../utils/assets.ts";
+import { claimLayout } from "../utils/layoutLock.ts";
+import type { ClipboardPayload } from "../utils/clipboard.ts";
 import { readProjectIdFromLocation, writeProjectIdToLocation } from "../utils/projectUrl.ts";
 import {
   applyCropToImageFrame,
@@ -39,7 +46,7 @@ import {
   normalizeRotation,
   serializeDocument,
 } from "../utils/documentState.ts";
-import { getGroupCenteringDelta } from "../utils/resizeGeometry.ts";
+import { getGroupCenteringDelta, sizeForDimension, type SizeAxis } from "../utils/resizeGeometry.ts";
 
 function defaultDoc(id = createProjectId()): DocumentState {
   const tpl = PAGE_TEMPLATES[0];
@@ -83,7 +90,10 @@ let textEditItemId: string | null = null;
 let cleanContentSnapshot = getDocumentContentSnapshot(doc);
 
 export const undoState = $state({ hasUndo: false, hasRedo: false });
-export const persistState = $state({ saving: false, lastSavedAt: 0 });
+/** Bumped whenever an image is loaded into memory, so items waiting for it re-render. */
+export const assetState = $state({ version: 0 });
+onAssetRegistered(() => { assetState.version += 1; });
+export const persistState = $state({ saving: false, lastSavedAt: 0, failed: false });
 
 function syncUndoFlags(): void {
   undoState.hasUndo = undoStack.length > 0;
@@ -102,8 +112,6 @@ function appendUndo(snapshot: string): void {
   textEditItemId = null;
   undoStack.push(snapshot);
   if (undoStack.length > MAX_UNDO) undoStack.shift();
-  // Embedded images make snapshots large. Bound history by memory as well as count.
-  while (undoStack.length > 1 && undoStack.reduce((total, entry) => total + entry.length * 2, 0) > 64 * 1024 * 1024) undoStack.shift();
   redoStack = [];
   syncUndoFlags();
 }
@@ -120,25 +128,23 @@ function pushUndo(): void {
 }
 
 export function undo(): void {
-  textEditItemId = null;
   if (undoStack.length === 0) return;
-  exitCropMode();
   redoStack.push(JSON.stringify(doc));
-  const snapshot = JSON.parse(undoStack.pop()!) as DocumentState;
-  Object.assign(doc, snapshot);
-  doc.cropModeItemId = null;
-  pendingUndoSnapshot = null;
-  refreshDirty();
-  syncUndoFlags();
+  restoreSnapshot(undoStack.pop()!);
 }
 
 export function redo(): void {
-  textEditItemId = null;
   if (redoStack.length === 0) return;
-  exitCropMode();
   undoStack.push(JSON.stringify(doc));
-  const snapshot = JSON.parse(redoStack.pop()!) as DocumentState;
-  Object.assign(doc, snapshot);
+  restoreSnapshot(redoStack.pop()!);
+}
+
+function restoreSnapshot(snapshot: string): void {
+  textEditItemId = null;
+  exitCropMode();
+  // The layout id names the file autosave writes to; history must never move it.
+  const { id: _id, ...state } = JSON.parse(snapshot) as DocumentState;
+  Object.assign(doc, state);
   doc.cropModeItemId = null;
   pendingUndoSnapshot = null;
   refreshDirty();
@@ -153,6 +159,7 @@ function markDirty(): void {
 
 function refreshDirty(): void {
   doc.dirty = getDocumentContentSnapshot(doc) !== cleanContentSnapshot;
+  if (doc.dirty) scheduleAutosave();
 }
 
 function markClean(): void {
@@ -205,8 +212,11 @@ export function createNewDocument(templateId: string, id = createProjectId()): v
   if (!tpl) return;
   const next = defaultDoc(id);
   next.page = { templateId: tpl.id, name: tpl.name, widthMm: tpl.widthMm, heightMm: tpl.heightMm };
+  void claimLayout(id);
+  clearTimeout(autosaveTimer);
   applyDocument(next);
   persistState.lastSavedAt = 0;
+  persistState.failed = false;
   clearHistory();
   markClean();
   writeProjectIdToLocation(doc.id, "replace");
@@ -214,11 +224,7 @@ export function createNewDocument(templateId: string, id = createProjectId()): v
 }
 
 export function requestNewDocument(templateId: string): void {
-  if (doc.dirty) {
-    confirmAction(() => createNewDocument(templateId));
-  } else {
-    createNewDocument(templateId);
-  }
+  leaveLayoutThen(() => createNewDocument(templateId));
 }
 
 export function setPageSize(widthMm: number, heightMm: number): void {
@@ -276,12 +282,32 @@ export function selectItem(id: string | null, additive = false): void {
   exitCropMode();
 }
 
+/** Replaces the selection; the primary item (the one the inspector edits) is the last id. */
+export function setSelection(ids: string[]): void {
+  const ordered = ids.filter((id, index) => ids.indexOf(id) === index && doc.items.some((item) => item.id === id));
+  if (ordered.length === doc.selectedItemIds.length && ordered.every((id, index) => doc.selectedItemIds[index] === id)) return;
+  doc.selectedItemIds = ordered;
+  doc.selectedItemId = ordered.at(-1) ?? null;
+  exitCropMode();
+}
+
+export function selectAll(): void {
+  setSelection(doc.items.map((item) => item.id));
+}
+
+function selectedIds(): string[] {
+  return doc.selectedItemIds.length
+    ? doc.selectedItemIds
+    : doc.selectedItemId ? [doc.selectedItemId] : [];
+}
+
 // ── Images ────────────────────────────────────────────────────────────
 
 export async function addImage(file: File): Promise<void> {
   if (doc.items.length >= MAX_DOCUMENT_ITEMS) throw new Error("Projects can contain up to 1,000 items.");
   const page = doc.page;
-  const { src, naturalWidthPx, naturalHeightPx } = await loadImageFile(file);
+  const { blob, mime, naturalWidthPx, naturalHeightPx } = await loadImageFile(file);
+  const asset = await registerAsset(blob, mime);
   if (doc.page !== page) throw new Error("The document changed while the image was loading. Please add it again.");
   if (doc.items.length >= MAX_DOCUMENT_ITEMS) throw new Error("Projects can contain up to 1,000 items.");
 
@@ -294,8 +320,8 @@ export async function addImage(file: File): Promise<void> {
   const item: ImageItem = {
     id: createId("img"),
     type: "image",
-    name: file.name,
-    src,
+    name: file.name || "Pasted image",
+    assetId: asset.id,
     xMm: (doc.page.widthMm - defaultWidthMm) / 2,
     yMm: (doc.page.heightMm - defaultHeightMm) / 2,
     widthMm: Math.max(MIN_SIZE_MM, defaultWidthMm),
@@ -433,12 +459,10 @@ export function setShapeCornerRadius(id: string, mm: number): void {
 }
 
 export function deleteSelectedItem(): void {
-  const selectedIds = doc.selectedItemIds.length
-    ? doc.selectedItemIds
-    : doc.selectedItemId ? [doc.selectedItemId] : [];
-  if (!selectedIds.length) return;
+  const ids = selectedIds();
+  if (!ids.length) return;
   pushUndo();
-  doc.items = doc.items.filter((i) => !selectedIds.includes(i.id));
+  doc.items = doc.items.filter((i) => !ids.includes(i.id));
   doc.selectedItemId = null;
   doc.selectedItemIds = [];
   exitCropMode();
@@ -446,27 +470,106 @@ export function deleteSelectedItem(): void {
 }
 
 export function duplicateSelectedItem(): void {
-  const selectedIds = doc.selectedItemIds.length
-    ? doc.selectedItemIds
-    : doc.selectedItemId ? [doc.selectedItemId] : [];
-  const items = doc.items.filter((item) => selectedIds.includes(item.id));
+  const ids = selectedIds();
+  const items = doc.items.filter((item) => ids.includes(item.id));
   if (!items.length) return;
-  if (doc.items.length + items.length > MAX_DOCUMENT_ITEMS) { showNotice("Projects can contain up to 1,000 items.", "error"); return; }
+  insertClones(items.map((item) => ({ ...item, name: `${item.name} copy`, xMm: item.xMm + 10, yMm: item.yMm + 10 })));
+}
+
+function cloneWithNewId(item: DocumentItem): DocumentItem {
+  const prefix = item.type === "image" ? "img" : item.type === "text" ? "txt" : "shp";
+  return { ...$state.snapshot(item) as DocumentItem, id: createId(prefix) };
+}
+
+function insertClones(items: DocumentItem[]): boolean {
+  if (doc.items.length + items.length > MAX_DOCUMENT_ITEMS) { showNotice("Projects can contain up to 1,000 items.", "error"); return false; }
   pushUndo();
-  const clones = items.map((item) => {
-    const prefix = item.type === "image" ? "img" : item.type === "text" ? "txt" : "shp";
-    return {
-      ...item,
-      id: createId(prefix),
-      name: item.name + " copy",
-      xMm: item.xMm + 10,
-      yMm: item.yMm + 10,
-    } as DocumentItem;
-  });
+  const clones = items.map(cloneWithNewId);
   doc.items.push(...clones);
   doc.selectedItemIds = clones.map((item) => item.id);
   doc.selectedItemId = clones.at(-1)?.id ?? null;
+  exitCropMode();
   markDirty();
+  return true;
+}
+
+// ── Clipboard ─────────────────────────────────────────────────────────
+
+let clipboard: ClipboardPayload | null = null;
+let pendingSystemCopy: ClipboardPayload | null = null;
+
+/**
+ * The payload copied during the current event, for the browser's copy event to
+ * put on the system clipboard. It expires at the end of the task so a later
+ * text copy never picks up stale items.
+ */
+export function takePendingSystemCopy(): ClipboardPayload | null {
+  const payload = pendingSystemCopy;
+  pendingSystemCopy = null;
+  return payload;
+}
+
+export function copySelection(): ClipboardPayload | null {
+  const ids = selectedIds();
+  const items = doc.items.filter((item) => ids.includes(item.id));
+  if (!items.length) return null;
+  const assets = new Map<string, ClipboardPayload["assets"][number]>();
+  for (const item of items) {
+    const asset = item.type === "image" ? getAsset(item.assetId) : undefined;
+    if (asset) assets.set(asset.id, { id: asset.id, mime: asset.mime });
+  }
+  clipboard = {
+    format: "tinycut-items",
+    version: 1,
+    items: items.map((item) => $state.snapshot(item) as DocumentItem),
+    assets: [...assets.values()],
+  };
+  pendingSystemCopy = clipboard;
+  setTimeout(() => { pendingSystemCopy = null; }, 0);
+  // Another tab can only paste these images once their bytes are in browser storage.
+  // Rewriting them also restarts the cleanup grace period.
+  storeAssets(assets.keys(), 0).catch(() => {});
+  return clipboard;
+}
+
+export function cutSelection(): ClipboardPayload | null {
+  const payload = copySelection();
+  if (payload) deleteSelectedItem();
+  return payload;
+}
+
+export function hasClipboardItems(): boolean {
+  return clipboard !== null;
+}
+
+/** Pastes items copied in this tab or, through the system clipboard, in another one. */
+export async function pasteItems(payload: ClipboardPayload | null = clipboard): Promise<boolean> {
+  if (!payload?.items.length) return false;
+  const docId = doc.id;
+  const missing = await loadStoredAssets(payload.assets);
+  if (doc.id !== docId) return false;
+  let items: DocumentItem[];
+  try {
+    items = normalizeDocument({ version: 2, page: doc.page, items: payload.items }).items;
+  } catch {
+    showNotice("The copied items could not be pasted", "error");
+    return false;
+  }
+  const pasteable = items.filter((item) => item.type !== "image" || getAsset(item.assetId));
+  if (missing || pasteable.length < items.length) {
+    showNotice("Some copied images are no longer in this browser and were skipped", "error");
+  }
+  if (!pasteable.length) return false;
+  const offset = pasteOffset(pasteable);
+  return insertClones(pasteable.map((item) => ({ ...item, xMm: item.xMm + offset, yMm: item.yMm + offset })));
+}
+
+/** Paste in place, unless that would land exactly on top of what is already there. */
+function pasteOffset(items: DocumentItem[]): number {
+  const taken = new Set(doc.items.map((item) => `${item.xMm},${item.yMm}`));
+  let offset = 0;
+  while (offset < 200 && items.some((item) => taken.has(`${item.xMm + offset},${item.yMm + offset}`))) offset += 10;
+  return offset;
 }
 
 // ── Z-Order ───────────────────────────────────────────────────────────
@@ -512,10 +615,8 @@ export function sendToBack(id: string): void {
 }
 
 export function centerSelectedOnPage(axis: "horizontal" | "vertical" | "both"): void {
-  const selectedIds = doc.selectedItemIds.length
-    ? doc.selectedItemIds
-    : doc.selectedItemId ? [doc.selectedItemId] : [];
-  const items = doc.items.filter((item) => selectedIds.includes(item.id));
+  const ids = selectedIds();
+  const items = doc.items.filter((item) => ids.includes(item.id));
   if (!items.length) return;
   const { dxMm: dx, dyMm: dy } = getGroupCenteringDelta(
     items,
@@ -595,35 +696,39 @@ export function setGridSettings(
 }
 
 export function setItemWidth(id: string, widthMm: number): void {
-  const item = getItemById(id);
-  if (!item || !Number.isFinite(widthMm)) return;
-  const aspect = item.widthMm / item.heightMm || 1;
-  const w = Math.max(MIN_SIZE_MM, item.lockedAspectRatio ? MIN_SIZE_MM * aspect : MIN_SIZE_MM, widthMm);
-  const h = item.lockedAspectRatio ? Math.max(MIN_SIZE_MM, w / aspect) : item.heightMm;
-  if (item.widthMm === w && item.heightMm === h) return;
-  pushUndo();
-  item.widthMm = w;
-  if (item.lockedAspectRatio) {
-    item.heightMm = h;
-  }
-  clampShapeAppearance(item);
-  markDirty();
+  setItemsSize([id], "width", widthMm);
 }
 
 export function setItemHeight(id: string, heightMm: number): void {
-  const item = getItemById(id);
-  if (!item || !Number.isFinite(heightMm)) return;
-  const aspect = item.widthMm / item.heightMm || 1;
-  const h = Math.max(MIN_SIZE_MM, item.lockedAspectRatio ? MIN_SIZE_MM / aspect : MIN_SIZE_MM, heightMm);
-  const w = item.lockedAspectRatio ? Math.max(MIN_SIZE_MM, h * aspect) : item.widthMm;
-  if (item.heightMm === h && item.widthMm === w) return;
+  setItemsSize([id], "height", heightMm);
+}
+
+/** One undo step that gives every listed item the same width or height. */
+export function setItemsSize(ids: string[], axis: SizeAxis, valueMm: number): void {
+  if (!Number.isFinite(valueMm)) return;
+  const changes = ids.flatMap((id) => {
+    const item = getItemById(id);
+    if (!item) return [];
+    const size = sizeForDimension(item, axis, valueMm, MIN_SIZE_MM);
+    return item.widthMm === size.widthMm && item.heightMm === size.heightMm ? [] : [{ item, size }];
+  });
+  if (!changes.length) return;
   pushUndo();
-  item.heightMm = h;
-  if (item.lockedAspectRatio) {
-    item.widthMm = w;
+  for (const { item, size } of changes) {
+    Object.assign(item, size);
+    clampShapeAppearance(item);
   }
-  clampShapeAppearance(item);
   markDirty();
+}
+
+export function setSelectionSize(axis: SizeAxis, valueMm: number): void {
+  setItemsSize(selectedIds(), axis, valueMm);
+}
+
+/** Gives the whole selection the primary item's width or height. */
+export function matchSelectionSize(axis: SizeAxis): void {
+  const primary = getSelectedItem();
+  if (primary) setSelectionSize(axis, axis === "width" ? primary.widthMm : primary.heightMm);
 }
 
 export function resizeItem(
@@ -777,7 +882,8 @@ function beginRegionMode(id: string | null, mode: RegionEditMode): void {
     crop: { ...image.crop },
   } : null;
   cropSession.mode = mode;
-  cropSession.localCrop = image ? { ...FULL_LOCAL_CROP } : null;
+  // A cut starts with nothing marked; the user draws the piece on the image.
+  cropSession.localCrop = image && mode === "crop" ? { ...FULL_LOCAL_CROP } : null;
   doc.cropModeItemId = cropSession.itemId;
 }
 
@@ -797,20 +903,21 @@ export function exitCropMode(): void {
   cropSession.localCrop = null;
 }
 
-export function getSessionLocalCrop(item: ImageItem): ImageCrop {
+/** The marked region within the visible image; null while a cut has nothing marked yet. */
+export function getSessionLocalCrop(item: ImageItem): ImageCrop | null {
   if (cropSession.itemId !== item.id) return { ...FULL_LOCAL_CROP };
-  if (cropSession.mode === "cut") return cropSession.localCrop ?? { ...FULL_LOCAL_CROP };
+  if (cropSession.mode === "cut") return cropSession.localCrop;
   if (cropSession.base) return cropRelativeTo(cropSession.base.crop, item.crop);
   return { ...FULL_LOCAL_CROP };
 }
 
-export function updateSessionLocalCrop(id: string, crop: ImageCrop): void {
+export function updateSessionLocalCrop(id: string, crop: ImageCrop | null): void {
   if (cropSession.itemId !== id) return;
   if (cropSession.mode === "cut") {
-    cropSession.localCrop = normalizeCrop(crop);
+    cropSession.localCrop = crop ? normalizeCrop(crop) : null;
     return;
   }
-  updateCropRelativeToSession(id, crop);
+  updateCropRelativeToSession(id, crop ?? FULL_LOCAL_CROP);
 }
 
 export function setCropRelativeToSession(id: string, crop: ImageCrop): void {
@@ -823,19 +930,21 @@ export function updateCropRelativeToSession(id: string, crop: ImageCrop): void {
   if (base) updateCrop(id, composeCrop(base.crop, crop));
 }
 
-export function applyCutFromSession(id: string, localCrop?: ImageCrop): void {
+/** Cuts the marked piece into a new item and clears the mark so the next piece can be drawn. */
+export function applyCutFromSession(id: string, localCrop?: ImageCrop): boolean {
   const item = getItemById(id);
-  if (!item || item.type !== "image") return;
+  if (!item || item.type !== "image") return false;
   if (doc.items.length >= MAX_DOCUMENT_ITEMS) {
     showNotice("Projects can contain up to 1,000 items.", "error");
-    return;
+    return false;
   }
-  const local = normalizeCrop(
-    localCrop
-      ?? (cropSession.itemId === id ? cropSession.localCrop : null)
-      ?? FULL_LOCAL_CROP,
-  );
-  if (cropSession.itemId === id) cropSession.localCrop = local;
+  const marked = localCrop ?? (cropSession.itemId === id ? cropSession.localCrop : null);
+  if (!marked) {
+    showNotice("Drag on the image to mark the piece you want to cut", "info");
+    return false;
+  }
+  const local = normalizeCrop(marked);
+  if (cropSession.itemId === id) cropSession.localCrop = null;
   const frame = cutRegionFromImage(item, local);
   const cut: ImageItem = {
     ...item,
@@ -851,6 +960,7 @@ export function applyCutFromSession(id: string, localCrop?: ImageCrop): void {
   doc.selectedItemId = item.id;
   doc.selectedItemIds = [item.id];
   markDirty();
+  return true;
 }
 
 // ── Zoom / Unit ───────────────────────────────────────────────────────
@@ -865,8 +975,49 @@ export function setUnit(unit: Unit): void {
 }
 
 // ── Persistence ───────────────────────────────────────────────────────
+//
+// Every layout saves itself to this browser's private file system shortly after
+// each change (see utils/projectStorage.ts for the file layout). A fresh, empty
+// tab writes nothing until it has content, so new tabs do not litter the list.
+
+const AUTOSAVE_DELAY_MS = 800;
+let autosaveEnabled = false;
+let autosaveTimer: ReturnType<typeof setTimeout> | undefined;
+let activeSave: Promise<boolean> | null = null;
+let persistenceRequested = false;
+
+/** Turned on by bootDocument; tests drive saves explicitly. */
+export function setAutosave(enabled: boolean): void {
+  autosaveEnabled = enabled;
+  if (!enabled) clearTimeout(autosaveTimer);
+}
+
+function worthSaving(): boolean {
+  return persistState.lastSavedAt > 0 || doc.items.length > 0 || doc.name !== "Untitled";
+}
+
+export type SaveStatus = "new" | "saving" | "saved" | "failed";
+
+/** What the toolbar shows: an empty fresh tab is "new" because nothing is written for it yet. */
+export function saveStatus(): SaveStatus {
+  if (persistState.failed) return "failed";
+  if (persistState.saving || (doc.dirty && worthSaving())) return "saving";
+  return persistState.lastSavedAt > 0 ? "saved" : "new";
+}
+
+/** True when closing the tab now would lose work. */
+export function hasUnsavedWork(): boolean {
+  return persistState.saving || (doc.dirty && worthSaving());
+}
+
+function scheduleAutosave(): void {
+  if (!autosaveEnabled || !worthSaving()) return;
+  clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(() => { void saveProject({ quiet: true }); }, AUTOSAVE_DELAY_MS);
+}
 
 export async function bootDocument(): Promise<void> {
+  setAutosave(true);
   let recovered = false;
   try {
     recovered = Boolean(await migrateLegacyLocalStorage());
@@ -874,65 +1025,131 @@ export async function bootDocument(): Promise<void> {
     recovered = false;
   }
   const fromUrl = readProjectIdFromLocation();
-  if (fromUrl) {
-    const loaded = await openProject(fromUrl, false);
-    if (!loaded) createNewDocument("a4-portrait", fromUrl);
-  } else {
-    createNewDocument("a4-portrait");
+  let result: LoadResult = fromUrl ? await loadProject(fromUrl) : "not-found";
+  // An id that is in the URL but not saved yet may belong to an empty tab that
+  // has not saved; only adopt it while holding its lock.
+  if (result === "not-found" && fromUrl && !(await claimLayout(fromUrl))) result = "locked";
+  if (result === "not-found") createNewDocument("a4-portrait", fromUrl ?? undefined);
+  else if (result !== "opened") createNewDocument("a4-portrait");
+  if (result === "locked") {
+    showNotice("That layout is already open in another tab, so this tab started a new one.", "info");
+  } else if (result === "invalid") {
+    showNotice("The saved layout is invalid or unreadable", "error");
+  } else if (recovered) {
+    showNotice("A layout from an older TinyCut version is in Your layouts.", "info");
   }
-  if (recovered) {
-    showNotice("A layout from an older TinyCut version is in Project → Open.", "info");
+  setTimeout(() => { void cleanUpStorage(); }, 5_000);
+}
+
+/** Writes the layout now. Autosave calls this quietly; Ctrl+S confirms with a notice. */
+export async function saveProject(options: { quiet?: boolean } = {}): Promise<boolean> {
+  // An explicit save closes the typing undo group; autosave pauses must not split it.
+  if (!options.quiet) endTextEdit();
+  clearTimeout(autosaveTimer);
+  while (activeSave) await activeSave;
+  activeSave = writeCurrentLayout(options.quiet ?? false);
+  try {
+    return await activeSave;
+  } finally {
+    activeSave = null;
   }
 }
 
-export async function saveProject(): Promise<void> {
-  endTextEdit();
-  if (persistState.saving) return;
+async function writeCurrentLayout(quiet: boolean): Promise<boolean> {
   persistState.saving = true;
+  const id = doc.id;
   const snapshot = getDocumentContentSnapshot(doc);
   try {
-    try {
-      if (typeof navigator !== "undefined") await navigator.storage?.persist?.();
-    } catch {
-      // Persistence permission is optional.
-    }
     const meta = await writeStoredProject(doc);
-    persistState.lastSavedAt = meta.updatedAt;
-    if (getDocumentContentSnapshot(doc) === snapshot) markClean();
-    writeProjectIdToLocation(doc.id, "replace");
-    showNotice("Saved in this browser", "success");
+    if (doc.id === id) {
+      persistState.lastSavedAt = meta.updatedAt;
+      persistState.failed = false;
+      if (getDocumentContentSnapshot(doc) === snapshot) markClean();
+      else scheduleAutosave();
+      writeProjectIdToLocation(doc.id, "replace");
+    }
+    if (!persistenceRequested) {
+      persistenceRequested = true;
+      void requestPersistentStorage();
+    }
+    if (!quiet) showNotice("Saved in this browser", "success");
+    return true;
   } catch {
-    showNotice("Could not save in this browser. Download a project JSON from the Project menu to keep your work.", "error");
+    if (doc.id === id) persistState.failed = true;
+    showNotice("Could not save in this browser. Download a backup from the Project menu to keep your work.", "error");
+    return false;
   } finally {
     persistState.saving = false;
   }
 }
 
-export async function openProject(id: string, showFeedback = true): Promise<boolean> {
-  try {
-    const parsed = await readStoredProject(id);
-    applyDocument(parsed);
-    persistState.lastSavedAt = Date.now();
-    clearHistory();
-    markClean();
-    writeProjectIdToLocation(doc.id, "replace");
-    if (showFeedback) showNotice("Layout opened", "success");
-    requestFitPage();
-    return true;
-  } catch (error) {
-    if (error instanceof ProjectNotFoundError) {
-      if (showFeedback) showNotice("That layout was not found in this browser", "info");
-      return false;
-    }
-    if (showFeedback) showNotice("The saved layout is invalid or unreadable", "error");
-    return false;
+/** Saves any pending change. Resolves true when leaving this layout would lose nothing. */
+export async function flushAutosave(): Promise<boolean> {
+  // Edits made while a save runs need another save, so repeat until it settles.
+  for (let attempt = 0; attempt < 5; attempt++) {
+    while (activeSave) await activeSave;
+    if (!doc.dirty || !worthSaving()) return true;
+    if (!autosaveEnabled || !(await saveProject({ quiet: true }))) return false;
   }
+  return !doc.dirty;
+}
+
+function leaveLayoutThen(action: () => unknown): void {
+  void flushAutosave().then((safe) => {
+    if (safe) void action();
+    else confirmAction(() => { void action(); });
+  });
+}
+
+type LoadResult = "opened" | "not-found" | "locked" | "invalid" | "unsaved";
+
+/**
+ * Waits for saves in flight and saves edits made meanwhile, right before the
+ * current layout is replaced. False means replacing it would lose work.
+ */
+async function settleBeforeReplacing(): Promise<boolean> {
+  while (activeSave) await activeSave;
+  return !autosaveEnabled || flushAutosave();
+}
+
+async function loadProject(id: string): Promise<LoadResult> {
+  let stored;
+  try {
+    stored = await readStoredProject(id);
+  } catch (error) {
+    return error instanceof ProjectNotFoundError ? "not-found" : "invalid";
+  }
+  if (!(await settleBeforeReplacing())) return "unsaved";
+  if (!(await claimLayout(id))) return "locked";
+  clearTimeout(autosaveTimer);
+  applyDocument(stored.document);
+  persistState.lastSavedAt = stored.meta.updatedAt || Date.now();
+  persistState.failed = false;
+  clearHistory();
+  markClean();
+  writeProjectIdToLocation(doc.id, "replace");
+  requestFitPage();
+  if (stored.missingImages) {
+    showNotice(`${stored.missingImages} image${stored.missingImages === 1 ? " is" : "s are"} missing from browser storage`, "error");
+  }
+  return "opened";
+}
+
+export async function openProject(id: string, showFeedback = true): Promise<boolean> {
+  const result = await loadProject(id);
+  if (showFeedback) {
+    if (result === "opened") showNotice("Layout opened", "success");
+    else if (result === "locked") showNotice("That layout is open in another tab. Switch to that tab to keep editing it.", "info");
+    else if (result === "not-found") showNotice("That layout was not found in this browser", "info");
+    else if (result === "unsaved") showNotice("This layout could not be saved, so the other one was not opened. Download a backup first.", "error");
+    else showNotice("The saved layout is invalid or unreadable", "error");
+  }
+  return result === "opened";
 }
 
 export function requestOpenProject(id: string): void {
-  const action = () => { void openProject(id); };
-  if (doc.dirty) confirmAction(action);
-  else action();
+  if (id === doc.id) return;
+  leaveLayoutThen(() => openProject(id));
 }
 
 export function requestOpenProjects(): void {
@@ -942,12 +1159,24 @@ export function requestOpenProjects(): void {
 export function requestLoadFromHash(): void {
   const id = readProjectIdFromLocation();
   if (id === doc.id) return;
-  if (!id) {
-    writeProjectIdToLocation(doc.id, "replace");
-    return;
-  }
   writeProjectIdToLocation(doc.id, "replace");
-  requestOpenProject(id);
+  if (id) requestOpenProject(id);
+}
+
+/** Saves the layout under a new id and keeps editing the copy; the original stays as it was. */
+export async function duplicateLayout(): Promise<void> {
+  if (!(await flushAutosave())) return;
+  const id = createProjectId();
+  await claimLayout(id);
+  clearTimeout(autosaveTimer);
+  doc.id = id;
+  doc.name = `${doc.name} copy`.slice(0, 80);
+  persistState.lastSavedAt = 0;
+  clearHistory();
+  markDirty();
+  if (await saveProject({ quiet: true })) {
+    showNotice("Copy saved. You are now editing the copy.", "success");
+  }
 }
 
 export async function listProjects(): Promise<StoredProjectMeta[]> {
@@ -955,9 +1184,24 @@ export async function listProjects(): Promise<StoredProjectMeta[]> {
 }
 
 export async function deleteProject(id: string): Promise<void> {
+  // An in-flight save of this layout would otherwise write it back after the delete.
+  while (activeSave) await activeSave;
+  if (doc.id === id) {
+    clearTimeout(autosaveTimer);
+    createNewDocument("a4-portrait");
+  }
   await deleteStoredProject(id);
-  if (doc.id === id) createNewDocument("a4-portrait");
   showNotice("Layout deleted from this browser", "success");
+  void cleanUpStorage();
+}
+
+/** Removes image files that no saved layout, and nothing open in this tab, still uses. */
+async function cleanUpStorage(): Promise<void> {
+  try {
+    await collectUnusedAssets(loadedAssetIds());
+  } catch {
+    // Cleanup is best effort; the files stay until the next try.
+  }
 }
 
 export function setProjectName(name: string): void {
@@ -971,42 +1215,38 @@ export function setProjectName(name: string): void {
   markDirty();
 }
 
-export function exportJson(): string {
-  return serializeDocument(doc, true);
+/** A single JSON file with the images embedded, readable by any TinyCut version. */
+export async function exportBackup(): Promise<string> {
+  const persisted = JSON.parse(serializeDocument(doc)) as DocumentState;
+  return JSON.stringify(await embedImages(persisted), null, 2);
 }
 
 export async function importJson(file: File): Promise<void> {
   if (file.size > MAX_PROJECT_FILE_BYTES) throw new Error("Project files must be 50 MB or smaller.");
   const before = getDocumentContentSnapshot(doc);
   const text = await file.text();
-  const parsed = normalizeDocument(JSON.parse(text));
+  const parsed = normalizeDocument(await ingestEmbeddedImages(JSON.parse(text)));
   parsed.id = createProjectId();
   if (getDocumentContentSnapshot(doc) !== before) throw new Error("The document changed while importing. Please open the project again.");
+  if (!(await settleBeforeReplacing())) throw new Error("This layout could not be saved, so the backup was not opened.");
+  await claimLayout(parsed.id);
+  clearTimeout(autosaveTimer);
   applyDocument(parsed);
   persistState.lastSavedAt = 0;
+  persistState.failed = false;
   clearHistory();
   writeProjectIdToLocation(doc.id, "replace");
   requestFitPage();
-  try {
-    const meta = await writeStoredProject(doc);
-    persistState.lastSavedAt = meta.updatedAt;
-    markClean();
-    showNotice("Project imported", "success");
-  } catch {
-    markDirty();
-    showNotice("Project opened, but it could not be saved in this browser. Download a JSON backup to keep it.", "error");
-  }
+  markDirty();
+  if (await saveProject({ quiet: true })) showNotice("Backup imported and saved in this browser", "success");
 }
 
 export function requestImportJson(file: File): void {
-  const action = () => {
-    importJson(file).catch((error) => showNotice(error instanceof Error && !(error instanceof SyntaxError) ? error.message : "The selected project file is invalid", "error"));
-  };
-  if (doc.dirty) confirmAction(action);
-  else action();
+  leaveLayoutThen(() => importJson(file).catch((error) => showNotice(error instanceof Error && !(error instanceof SyntaxError) ? error.message : "The selected backup file is invalid", "error")));
 }
 
 function applyDocument(next: DocumentState): void {
+  exitCropMode();
   doc.id = next.id;
   doc.name = next.name;
   doc.version = next.version;

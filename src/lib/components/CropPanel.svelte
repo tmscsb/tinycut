@@ -15,11 +15,17 @@
   let cropRight = $state("");
   let cropBottom = $state("");
 
-  let lastAppliedCrop = $state<ImageCrop | null>(null);
+  let lastAppliedCrop = $state<ImageCrop | null | undefined>(undefined);
   const isCut = $derived(cropSession.mode === "cut");
+  const marked = $derived(getSessionLocalCrop(item));
 
   $effect(() => {
-    const c = getSessionLocalCrop(item);
+    const c = marked;
+    if (c === null) {
+      if (lastAppliedCrop !== null) [cropLeft, cropTop, cropRight, cropBottom] = ["", "", "", ""];
+      lastAppliedCrop = null;
+      return;
+    }
     if (!lastAppliedCrop || lastAppliedCrop.left !== c.left || lastAppliedCrop.top !== c.top || lastAppliedCrop.right !== c.right || lastAppliedCrop.bottom !== c.bottom) {
       cropLeft = String((c.left * 100).toFixed(1));
       cropTop = String((c.top * 100).toFixed(1));
@@ -30,6 +36,10 @@
   });
 
   function applyRegion() {
+    if (isCut && !marked && [cropLeft, cropTop, cropRight, cropBottom].every((value) => value.trim() === "")) {
+      applyCutFromSession(item.id);
+      return;
+    }
     let left = parseFloat(cropLeft) / 100;
     let top = parseFloat(cropTop) / 100;
     let right = 1 - parseFloat(cropRight) / 100;
@@ -43,18 +53,21 @@
     if (bottom - top < 0.01) bottom = Math.min(1, top + 0.01);
 
     const crop: ImageCrop = { left, top, right, bottom };
-    lastAppliedCrop = { ...crop };
     if (cropSession.mode === "cut") {
       applyCutFromSession(item.id, crop);
       return;
     }
+    lastAppliedCrop = { ...crop };
     setCropRelativeToSession(item.id, crop);
     exitCropMode();
   }
 </script>
 
 <form id={`crop-form-${item.id}`} class="crop-panel-form space-y-3" novalidate onsubmit={(event) => { event.preventDefault(); applyRegion(); }}>
-  <h4 class="text-xs font-medium text-base-content/65 uppercase tracking-wide">Trim from edge (%)</h4>
+  {#if isCut}
+    <p class="text-xs text-base-content/70">Drag across the image to mark a piece. Drag inside the mark to move it, or use its handles to resize.</p>
+  {/if}
+  <h4 class="text-xs font-medium text-base-content/65 uppercase tracking-wide">{isCut ? "Or type the edges (%)" : "Trim from edge (%)"}</h4>
 
   <div class="grid grid-cols-2 gap-2">
     <div>
@@ -63,7 +76,7 @@
         id={`crop-left-${item.id}`}
         type="number"
         class="input input-bordered input-sm w-full"
-        min="0" max="100" step="0.5"
+        min="0" max="100" step="0.5" placeholder="0"
         bind:value={cropLeft}
       />
     </div>
@@ -73,7 +86,7 @@
         id={`crop-top-${item.id}`}
         type="number"
         class="input input-bordered input-sm w-full"
-        min="0" max="100" step="0.5"
+        min="0" max="100" step="0.5" placeholder="0"
         bind:value={cropTop}
       />
     </div>
@@ -86,7 +99,7 @@
         id={`crop-right-${item.id}`}
         type="number"
         class="input input-bordered input-sm w-full"
-        min="0" max="100" step="0.5"
+        min="0" max="100" step="0.5" placeholder="0"
         bind:value={cropRight}
       />
     </div>
@@ -96,7 +109,7 @@
         id={`crop-bottom-${item.id}`}
         type="number"
         class="input input-bordered input-sm w-full"
-        min="0" max="100" step="0.5"
+        min="0" max="100" step="0.5" placeholder="0"
         bind:value={cropBottom}
       />
     </div>

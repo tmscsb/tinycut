@@ -11,6 +11,10 @@
     enterCutMode,
     resetCrop,
     centerSelectedOnPage,
+    copySelection,
+    cutSelection,
+    pasteItems,
+    hasClipboardItems,
   } from "../stores/documentStore.svelte.ts";
   import { onMount } from "svelte";
 
@@ -31,11 +35,20 @@
     onclose();
   }
 
+  /** Also puts the items on the system clipboard, so Ctrl+V and other tabs see this copy. */
+  function copyToClipboard(cut: boolean) {
+    action(() => {
+      if (cut) cutSelection();
+      else copySelection();
+      document.execCommand("copy");
+    });
+  }
+
   const isImage = $derived(item.type === "image");
   const isMac = typeof navigator !== "undefined" && navigator.platform.includes("Mac");
   const modKey = isMac ? "⌘" : "Ctrl";
   const menuX = $derived(Math.max(8, Math.min(x, window.innerWidth - 220)));
-  const menuY = $derived(Math.max(8, Math.min(y, window.innerHeight - 420)));
+  const menuY = $derived(Math.max(8, Math.min(y, window.innerHeight - 540)));
   let menuEl: HTMLDivElement | undefined = $state();
 
   onMount(() => {
@@ -82,6 +95,20 @@
   bind:this={menuEl}
   onkeydown={handleKeydown}
 >
+  <button class="btn btn-sm btn-ghost w-full justify-start" role="menuitem" onclick={() => copyToClipboard(false)}>
+    Copy
+    <kbd class="kbd kbd-xs ml-auto">{modKey} + C</kbd>
+  </button>
+  <button class="btn btn-sm btn-ghost w-full justify-start" role="menuitem" onclick={() => copyToClipboard(true)}>
+    Cut
+    <kbd class="kbd kbd-xs ml-auto">{modKey} + X</kbd>
+  </button>
+  {#if hasClipboardItems()}
+    <button class="btn btn-sm btn-ghost w-full justify-start" role="menuitem" onclick={() => action(() => { void pasteItems(); })}>
+      Paste
+      <kbd class="kbd kbd-xs ml-auto">{modKey} + V</kbd>
+    </button>
+  {/if}
   <button class="btn btn-sm btn-ghost w-full justify-start" role="menuitem" onclick={() => action(duplicateSelectedItem)}>
     Duplicate
     <kbd class="kbd kbd-xs ml-auto">{modKey} + D</kbd>

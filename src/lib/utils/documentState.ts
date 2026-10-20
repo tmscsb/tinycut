@@ -13,6 +13,7 @@ import {
 } from "../types/document.ts";
 import { migrateLegacyCropGeometry, normalizeCrop } from "./cropGeometry.ts";
 import { createProjectId, isProjectId } from "./ids.ts";
+import { isAssetId } from "./assets.ts";
 
 const SHAPE_TYPES = new Set<ShapeType>(["rect", "ellipse", "line"]);
 const FONT_FAMILIES = new Set([
@@ -94,7 +95,7 @@ function normalizeImage(
   const item: ImageItem = {
     ...common,
     type: "image",
-    src: text(value.src, ""),
+    assetId: text(value.assetId, ""),
     naturalWidthPx: Math.max(1, requiredFinite(value.naturalWidthPx, "image width")),
     naturalHeightPx: Math.max(1, requiredFinite(value.naturalHeightPx, "image height")),
     lockedAspectRatio: value.lockedAspectRatio !== false,
@@ -107,7 +108,7 @@ function normalizeImage(
     borderWidthMm: Math.max(0, Math.min(Math.min(common.widthMm, common.heightMm) / 2, finite(value.borderWidthMm, 0))),
     borderColor: color(value.borderColor, "#000000"),
   };
-  if (!/^data:image\/(png|jpeg|webp|svg\+xml)(;[^,]*)?,/i.test(item.src)) throw new Error("Invalid image source");
+  if (!isAssetId(item.assetId)) throw new Error("Invalid image source");
   return legacy ? migrateLegacyCropGeometry(item) : item;
 }
 

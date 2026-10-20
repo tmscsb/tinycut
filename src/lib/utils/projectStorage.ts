@@ -1,11 +1,41 @@
-import { LOCAL_STORAGE_KEY, type DocumentState } from "../types/document.ts";
+import { LOCAL_STORAGE_KEY, type DocumentState, type ImageItem } from "../types/document.ts";
 import { createProjectId, isProjectId } from "./ids.ts";
 import { normalizeDocument } from "./documentState.ts";
+import {
+  getAsset,
+  hasAsset,
+  ingestEmbeddedImages,
+  isAssetId,
+  isImageMime,
+  registerAsset,
+  registerAssetWithId,
+  type ImageMime,
+} from "./assets.ts";
+
+/**
+ * Browser storage layout, inside the origin private file system (OPFS):
+ *
+ *   tinycut/projects/<layout id>/project.json   small JSON: page, items, metadata
+ *   tinycut/assets/<sha256>                     raw image bytes, shared by every layout
+ *
+ * Images are stored once however many layouts, duplicates, or cut pieces use them.
+ */
 
 export type StoredProjectMeta = {
   id: string;
   name: string;
   updatedAt: number;
+  pageName: string;
+  itemCount: number;
+  imageCount: number;
+  /** Bytes of the distinct images this layout uses. */
+  imageBytes: number;
+};
+
+export type StoredProject = {
+  document: DocumentState;
+  meta: StoredProjectMeta;
+  missingImages: number;
 };
 
 export class ProjectNotFoundError extends Error {
@@ -15,132 +45,95 @@ export class ProjectNotFoundError extends Error {
   }
 }
 
-export type ProjectBackend = {
-  listProjectIds(): Promise<string[]>;
-  readBytes(projectId: string, relativePath: string): Promise<Uint8Array | null>;
-  writeBytes(projectId: string, relativePath: string, bytes: Uint8Array): Promise<void>;
-  listFiles(projectId: string, directory: string): Promise<string[]>;
-  removeFile(projectId: string, relativePath: string): Promise<void>;
-  removeProject(projectId: string): Promise<void>;
+export type StorageEntry = { name: string; kind: "file" | "directory" };
+
+/** Paths are relative to the app's storage folder and use "/" separators. */
+export type StorageBackend = {
+  readFile(path: string): Promise<File | null>;
+  writeFile(path: string, data: Blob): Promise<void>;
+  list(directory: string): Promise<StorageEntry[]>;
+  /** Removes a file or a whole folder; a missing path is not an error. */
+  remove(path: string): Promise<void>;
 };
 
-const textEncoder = new TextEncoder();
-const textDecoder = new TextDecoder();
-const IMAGE_DATA_URL = /^data:(image\/(?:png|jpeg|webp|svg\+xml))(;charset=[^;,]+)?(;base64)?,([\s\S]*)$/i;
-const ASSET_NAME = /^[a-zA-Z0-9._-]+$/;
-const MIME_BY_EXT: Record<string, string> = {
+type AssetTable = Record<string, { mime: ImageMime; size: number }>;
+
+const STORAGE_FORMAT = 2;
+const ASSET_GRACE_MS = 24 * 60 * 60 * 1000;
+const LEGACY_ASSET_NAME = /^[a-zA-Z0-9._-]+$/;
+const LEGACY_MIME_BY_EXT: Record<string, ImageMime> = {
   ".png": "image/png",
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
   ".webp": "image/webp",
   ".svg": "image/svg+xml",
 };
-const EXT_BY_MIME: Record<string, string> = {
-  "image/png": ".png",
-  "image/jpeg": ".jpg",
-  "image/webp": ".webp",
-  "image/svg+xml": ".svg",
-};
 
-let backend: ProjectBackend = createOpfsBackend();
+let backend: StorageBackend = createOpfsBackend();
 
-export function setProjectBackend(next: ProjectBackend): void {
+export function setProjectBackend(next: StorageBackend): void {
   backend = next;
 }
 
-export function createMemoryBackend(): ProjectBackend {
-  const files = new Map<string, Uint8Array>();
-  const key = (projectId: string, relativePath: string) => `${projectId}/${relativePath}`;
+const projectFile = (id: string) => `projects/${id}/project.json`;
+const assetFile = (id: string) => `assets/${id}`;
+
+export function createMemoryBackend(): StorageBackend {
+  const files = new Map<string, File>();
   return {
-    async listProjectIds() {
-      const ids = new Set<string>();
+    async readFile(path) {
+      return files.get(path) ?? null;
+    },
+    async writeFile(path, data) {
+      files.set(path, new File([data], path.slice(path.lastIndexOf("/") + 1), { type: data.type }));
+    },
+    async list(directory) {
+      const prefix = `${directory}/`;
+      const entries = new Map<string, StorageEntry["kind"]>();
       for (const path of files.keys()) {
-        const id = path.slice(0, path.indexOf("/"));
-        if (isProjectId(id)) ids.add(id);
+        if (!path.startsWith(prefix)) continue;
+        const rest = path.slice(prefix.length);
+        const slash = rest.indexOf("/");
+        if (slash === -1) entries.set(rest, "file");
+        else entries.set(rest.slice(0, slash), "directory");
       }
-      return [...ids];
+      return [...entries].map(([name, kind]) => ({ name, kind }));
     },
-    async readBytes(projectId, relativePath) {
-      return files.get(key(projectId, relativePath)) ?? null;
-    },
-    async writeBytes(projectId, relativePath, bytes) {
-      files.set(key(projectId, relativePath), bytes);
-    },
-    async listFiles(projectId, directory) {
-      const prefix = `${projectId}/${directory}/`;
-      return [...files.keys()]
-        .filter((path) => path.startsWith(prefix))
-        .map((path) => path.slice(prefix.length))
-        .filter((name) => name.length > 0 && !name.includes("/"));
-    },
-    async removeFile(projectId, relativePath) {
-      files.delete(key(projectId, relativePath));
-    },
-    async removeProject(projectId) {
-      const prefix = `${projectId}/`;
-      for (const path of [...files.keys()]) {
-        if (path.startsWith(prefix)) files.delete(path);
+    async remove(path) {
+      for (const key of [...files.keys()]) {
+        if (key === path || key.startsWith(`${path}/`)) files.delete(key);
       }
     },
   };
 }
 
-export function parseImageDataUrl(src: string): { mime: string; bytes: Uint8Array } | null {
-  const match = IMAGE_DATA_URL.exec(src);
-  if (!match) return null;
-  const mime = match[1].toLowerCase();
-  const payload = match[4];
-  if (match[3]) {
-    const binary = atob(payload);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    return { mime, bytes };
+export function packProject(doc: DocumentState): { json: string; meta: StoredProjectMeta; assetIds: string[] } {
+  const assets: AssetTable = {};
+  for (const item of doc.items) {
+    if (item.type !== "image" || assets[item.assetId]) continue;
+    // A missing image keeps its entry so the layout still saves and cleanup still sees the reference.
+    const asset = getAsset(item.assetId);
+    assets[item.assetId] = asset ? { mime: asset.mime, size: asset.blob.size } : { mime: "image/png", size: 0 };
   }
-  try {
-    return { mime, bytes: textEncoder.encode(decodeURIComponent(payload)) };
-  } catch {
-    return null;
-  }
-}
-
-export function bytesToDataUrl(mime: string, bytes: Uint8Array): string {
-  const chunkSize = 0x8000;
-  let binary = "";
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    const chunk = bytes.subarray(i, i + chunkSize);
-    binary += String.fromCharCode.apply(null, chunk as unknown as number[]);
-  }
-  return `data:${mime};base64,${btoa(binary)}`;
-}
-
-type PackedAsset = { filename: string; bytes: Uint8Array };
-
-export function packProject(doc: DocumentState): { json: string; assets: PackedAsset[]; meta: StoredProjectMeta } {
-  const usedNames = new Set<string>();
-  const assets: PackedAsset[] = [];
-  const items = doc.items.map((item) => {
-    if (item.type !== "image") return item;
-    const parsed = parseImageDataUrl(item.src);
-    if (!parsed) return item;
-    const filename = uniqueAssetName(item.id, parsed.mime, usedNames);
-    assets.push({ filename, bytes: parsed.bytes });
-    const { src: _src, ...rest } = item;
-    return { ...rest, asset: filename, assetMime: parsed.mime };
-  });
   const meta: StoredProjectMeta = {
     id: doc.id,
     name: doc.name,
     updatedAt: Date.now(),
+    pageName: doc.page.name,
+    itemCount: doc.items.length,
+    imageCount: doc.items.filter((item) => item.type === "image").length,
+    imageBytes: Object.values(assets).reduce((total, asset) => total + asset.size, 0),
   };
   const json = JSON.stringify({
-    storage: 1,
+    storage: STORAGE_FORMAT,
     ...meta,
+    assets,
     document: {
       version: 2,
       id: doc.id,
       name: doc.name,
       page: doc.page,
-      items,
+      items: doc.items,
       zoom: doc.zoom,
       unit: doc.unit,
       gridSizeMm: doc.gridSizeMm,
@@ -149,44 +142,53 @@ export function packProject(doc: DocumentState): { json: string; assets: PackedA
       showGuides: doc.showGuides,
     },
   });
-  return { json, assets, meta };
+  return { json, meta, assetIds: Object.keys(assets) };
 }
 
-export function unpackProject(json: string, readAsset: (filename: string) => Uint8Array | null): DocumentState {
-  const envelope = JSON.parse(json) as {
-    storage?: unknown;
-    document?: unknown;
-    id?: unknown;
-    name?: unknown;
-  };
-  const rawDocument = envelope.document ?? envelope;
-  const documentValue = asObject(rawDocument);
-  const items = Array.isArray(documentValue.items) ? documentValue.items : [];
-  documentValue.items = items.map((rawItem) => {
-    const item = asObject(rawItem);
-    if (item.type !== "image") return item;
-    if (typeof item.src === "string" && item.src.startsWith("data:image/")) return item;
-    const filename = typeof item.asset === "string" ? item.asset : "";
-    if (!ASSET_NAME.test(filename)) throw new Error("Invalid image asset");
-    const bytes = readAsset(filename);
-    if (!bytes) throw new Error("Missing image file");
-    const mime = typeof item.assetMime === "string" && item.assetMime in EXT_BY_MIME
-      ? item.assetMime
-      : mimeFromFilename(filename);
-    const { asset: _asset, assetMime: _mime, ...rest } = item;
-    return { ...rest, src: bytesToDataUrl(mime, bytes) };
-  });
-  if (typeof envelope.id === "string") documentValue.id = envelope.id;
-  if (typeof envelope.name === "string") documentValue.name = envelope.name;
-  return normalizeDocument(documentValue);
+export async function writeStoredProject(doc: DocumentState): Promise<StoredProjectMeta> {
+  // Everything is read from `doc` before the first await: the caller may switch layouts meanwhile.
+  const packed = packProject(doc);
+  const id = packed.meta.id;
+  assertProjectId(id);
+  // Image files first, so a project.json on disk never points at bytes that are not there.
+  await storeAssets(packed.assetIds);
+  await backend.writeFile(projectFile(id), new Blob([packed.json], { type: "application/json" }));
+  return packed.meta;
+}
+
+/**
+ * Writes these in-memory images to browser storage. A file already there is
+ * rewritten once it is older than `refreshAfterMs`, so cleanup in another tab,
+ * which only deletes files older than its grace period, never races a save or a copy.
+ */
+export async function storeAssets(ids: Iterable<string>, refreshAfterMs = ASSET_GRACE_MS / 2): Promise<void> {
+  for (const id of new Set(ids)) {
+    const asset = getAsset(id);
+    if (!asset) continue;
+    const existing = await backend.readFile(assetFile(id));
+    if (existing && existing.size === asset.blob.size && Date.now() - existing.lastModified < refreshAfterMs) continue;
+    await backend.writeFile(assetFile(id), asset.blob);
+  }
+}
+
+/** Loads images saved by any layout or tab into memory. Returns how many could not be found. */
+export async function loadStoredAssets(wanted: Iterable<{ id: string; mime: ImageMime }>): Promise<number> {
+  let missing = 0;
+  for (const { id, mime } of wanted) {
+    if (hasAsset(id)) continue;
+    const file = isAssetId(id) ? await backend.readFile(assetFile(id)) : null;
+    if (file) await registerAssetWithId(id, file, mime);
+    else missing += 1;
+  }
+  return missing;
 }
 
 export async function listStoredProjects(): Promise<StoredProjectMeta[]> {
-  const ids = await backend.listProjectIds();
   const projects: StoredProjectMeta[] = [];
-  for (const id of ids) {
+  for (const id of await listProjectIds()) {
     try {
-      projects.push(await readStoredMeta(id));
+      const file = await backend.readFile(projectFile(id));
+      if (file) projects.push(readMeta(id, JSON.parse(await file.text())));
     } catch {
       // Skip unreadable folders so one bad save cannot hide the rest.
     }
@@ -194,37 +196,68 @@ export async function listStoredProjects(): Promise<StoredProjectMeta[]> {
   return projects.sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
-export async function readStoredProject(id: string): Promise<DocumentState> {
+export async function readStoredProject(id: string): Promise<StoredProject> {
   assertProjectId(id);
-  const bytes = await backend.readBytes(id, "project.json");
-  if (!bytes) throw new ProjectNotFoundError(id);
-  const assets = new Map<string, Uint8Array>();
-  for (const filename of await backend.listFiles(id, "images")) {
-    const data = await backend.readBytes(id, `images/${filename}`);
-    if (data) assets.set(filename, data);
-  }
-  const parsed = unpackProject(textDecoder.decode(bytes), (filename) => assets.get(filename) ?? null);
-  parsed.id = id;
-  return parsed;
-}
+  const file = await backend.readFile(projectFile(id));
+  if (!file) throw new ProjectNotFoundError(id);
+  const envelope = asObject(JSON.parse(await file.text()));
+  const meta = readMeta(id, envelope);
 
-export async function writeStoredProject(doc: DocumentState): Promise<StoredProjectMeta> {
-  assertProjectId(doc.id);
-  const packed = packProject(doc);
-  const used = new Set(packed.assets.map((asset) => asset.filename));
-  for (const asset of packed.assets) {
-    await backend.writeBytes(doc.id, `images/${asset.filename}`, asset.bytes);
-  }
-  await backend.writeBytes(doc.id, "project.json", textEncoder.encode(packed.json));
-  for (const filename of await backend.listFiles(doc.id, "images")) {
-    if (!used.has(filename)) await backend.removeFile(doc.id, `images/${filename}`);
-  }
-  return packed.meta;
+  if (envelope.storage !== STORAGE_FORMAT) return upgradeLegacyProject(id, envelope, meta);
+
+  const assets = asAssetTable(envelope.assets);
+  await loadStoredAssets(Object.entries(assets).map(([assetId, asset]) => ({ id: assetId, mime: asset.mime })));
+  const document = normalizeDocument({ ...asObject(envelope.document), id, name: meta.name });
+  return { document, meta, missingImages: countMissingImages(document) };
 }
 
 export async function deleteStoredProject(id: string): Promise<void> {
   assertProjectId(id);
-  await backend.removeProject(id);
+  await backend.remove(`projects/${id}`);
+}
+
+/**
+ * Deletes image files no saved layout uses. `inUse` protects this tab's unsaved
+ * images; the grace period protects other tabs' unsaved images and clipboards.
+ */
+export async function collectUnusedAssets(inUse: Set<string>, now = Date.now()): Promise<number> {
+  const referenced = new Set(inUse);
+  for (const id of await listProjectIds()) {
+    const file = await backend.readFile(projectFile(id));
+    if (!file) continue;
+    // A layout we cannot read might still need its images, so keep everything.
+    const envelope = asObject(JSON.parse(await file.text()));
+    for (const assetId of Object.keys(asObjectOrEmpty(envelope.assets))) referenced.add(assetId);
+  }
+  let removed = 0;
+  for (const entry of await backend.list("assets")) {
+    if (entry.kind !== "file" || referenced.has(entry.name)) continue;
+    const file = await backend.readFile(assetFile(entry.name));
+    if (file && now - file.lastModified > ASSET_GRACE_MS) {
+      await backend.remove(assetFile(entry.name));
+      removed += 1;
+    }
+  }
+  return removed;
+}
+
+export async function getStorageEstimate(): Promise<{ usage: number; quota: number; persisted: boolean } | null> {
+  if (typeof navigator === "undefined" || !navigator.storage?.estimate) return null;
+  try {
+    const estimate = await navigator.storage.estimate();
+    const persisted = await navigator.storage.persisted?.() ?? false;
+    return { usage: estimate.usage ?? 0, quota: estimate.quota ?? 0, persisted };
+  } catch {
+    return null;
+  }
+}
+
+export async function requestPersistentStorage(): Promise<boolean> {
+  try {
+    return await navigator.storage?.persist?.() ?? false;
+  } catch {
+    return false;
+  }
 }
 
 export async function migrateLegacyLocalStorage(): Promise<StoredProjectMeta | null> {
@@ -236,7 +269,7 @@ export async function migrateLegacyLocalStorage(): Promise<StoredProjectMeta | n
   }
   if (!raw) return null;
   try {
-    const parsed = normalizeDocument(JSON.parse(raw));
+    const parsed = normalizeDocument(await ingestEmbeddedImages(JSON.parse(raw)));
     parsed.id = createProjectId();
     parsed.name = parsed.name === "Untitled" ? "Recovered layout" : parsed.name;
     const meta = await writeStoredProject(parsed);
@@ -251,40 +284,80 @@ export async function migrateLegacyLocalStorage(): Promise<StoredProjectMeta | n
   }
 }
 
-async function readStoredMeta(id: string): Promise<StoredProjectMeta> {
-  const bytes = await backend.readBytes(id, "project.json");
-  if (!bytes) throw new ProjectNotFoundError(id);
-  const envelope = JSON.parse(textDecoder.decode(bytes)) as {
-    id?: unknown;
-    name?: unknown;
-    updatedAt?: unknown;
-  };
+/** Format 1 kept a private images/ folder per layout. Move its images into shared storage. */
+async function upgradeLegacyProject(
+  id: string,
+  envelope: Record<string, unknown>,
+  meta: StoredProjectMeta,
+): Promise<StoredProject> {
+  const documentValue = asObject(envelope.document ?? envelope);
+  const rawItems = Array.isArray(documentValue.items) ? documentValue.items : [];
+  const items = [];
+  for (const rawItem of rawItems) {
+    const item = asObject(rawItem);
+    if (item.type !== "image" || typeof item.asset !== "string") {
+      items.push(item);
+      continue;
+    }
+    if (!LEGACY_ASSET_NAME.test(item.asset)) throw new Error("Invalid image asset");
+    const bytes = await backend.readFile(`projects/${id}/images/${item.asset}`);
+    if (!bytes) throw new Error("Missing image file");
+    const mime = isImageMime(item.assetMime) ? item.assetMime : legacyMime(item.asset);
+    const asset = await registerAsset(bytes, mime);
+    const { asset: _asset, assetMime: _mime, ...rest } = item;
+    items.push({ ...rest, assetId: asset.id });
+  }
+  const ingested = await ingestEmbeddedImages({ ...documentValue, items });
+  const document = normalizeDocument({ ...asObject(ingested), id, name: meta.name });
+  const upgraded = await writeStoredProject(document);
+  await backend.remove(`projects/${id}/images`);
+  return { document, meta: { ...upgraded, updatedAt: meta.updatedAt }, missingImages: 0 };
+}
+
+async function listProjectIds(): Promise<string[]> {
+  const entries = await backend.list("projects");
+  return entries.filter((entry) => entry.kind === "directory" && isProjectId(entry.name)).map((entry) => entry.name);
+}
+
+function readMeta(id: string, value: unknown): StoredProjectMeta {
+  const envelope = asObject(value);
+  const documentValue = asObjectOrEmpty(envelope.document);
+  const items = Array.isArray(documentValue.items) ? documentValue.items as { type?: unknown }[] : [];
+  const assets = asObjectOrEmpty(envelope.assets) as Partial<AssetTable>;
+  const page = asObjectOrEmpty(documentValue.page);
+  const count = (value: unknown, fallback: number) =>
+    typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : fallback;
   return {
     id,
     name: typeof envelope.name === "string" && envelope.name.trim() ? envelope.name.trim().slice(0, 80) : "Untitled",
-    updatedAt: typeof envelope.updatedAt === "number" && Number.isFinite(envelope.updatedAt)
-      ? envelope.updatedAt
-      : 0,
+    updatedAt: count(envelope.updatedAt, 0),
+    pageName: typeof page.name === "string" ? page.name.slice(0, 120) : "",
+    itemCount: count(envelope.itemCount, items.length),
+    imageCount: count(envelope.imageCount, items.filter((item) => item?.type === "image").length),
+    imageBytes: count(
+      envelope.imageBytes,
+      Object.values(assets).reduce((total, asset) => total + count(asset?.size, 0), 0),
+    ),
   };
 }
 
-function uniqueAssetName(itemId: string, mime: string, used: Set<string>): string {
-  const ext = EXT_BY_MIME[mime] ?? ".bin";
-  const base = `${itemId.replace(/[^a-zA-Z0-9_-]/g, "_") || "image"}${ext}`;
-  let filename = base;
-  let suffix = 2;
-  while (used.has(filename)) {
-    filename = `${base.slice(0, -ext.length)}-${suffix}${ext}`;
-    suffix += 1;
-  }
-  used.add(filename);
-  return filename;
+function countMissingImages(doc: DocumentState): number {
+  return doc.items.filter((item): item is ImageItem => item.type === "image" && !hasAsset(item.assetId)).length;
 }
 
-function mimeFromFilename(filename: string): string {
+function asAssetTable(value: unknown): AssetTable {
+  const table: AssetTable = {};
+  for (const [id, raw] of Object.entries(asObjectOrEmpty(value))) {
+    const entry = asObjectOrEmpty(raw);
+    if (!isAssetId(id) || !isImageMime(entry.mime)) continue;
+    table[id] = { mime: entry.mime, size: typeof entry.size === "number" ? entry.size : 0 };
+  }
+  return table;
+}
+
+function legacyMime(filename: string): ImageMime {
   const dot = filename.lastIndexOf(".");
-  const ext = dot >= 0 ? filename.slice(dot).toLowerCase() : "";
-  return MIME_BY_EXT[ext] ?? "image/png";
+  return LEGACY_MIME_BY_EXT[dot >= 0 ? filename.slice(dot).toLowerCase() : ""] ?? "image/png";
 }
 
 function asObject(value: unknown): Record<string, unknown> {
@@ -292,93 +365,77 @@ function asObject(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+function asObjectOrEmpty(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
 function assertProjectId(id: string): void {
   if (!isProjectId(id)) throw new Error("Invalid layout id");
 }
 
-function createOpfsBackend(): ProjectBackend {
-  async function rootDir(): Promise<FileSystemDirectoryHandle> {
-    if (!navigator.storage?.getDirectory) {
+function createOpfsBackend(): StorageBackend {
+  async function appDir(): Promise<FileSystemDirectoryHandle> {
+    if (typeof navigator === "undefined" || !navigator.storage?.getDirectory) {
       throw new Error("This browser cannot store layouts locally.");
     }
     const root = await navigator.storage.getDirectory();
-    const tinycut = await root.getDirectoryHandle("tinycut", { create: true });
-    return tinycut.getDirectoryHandle("projects", { create: true });
+    return root.getDirectoryHandle("tinycut", { create: true });
   }
 
-  async function projectDir(projectId: string, create: boolean): Promise<FileSystemDirectoryHandle> {
-    const projects = await rootDir();
-    return projects.getDirectoryHandle(projectId, { create });
+  function splitPath(path: string): string[] {
+    const parts = path.split("/").filter(Boolean);
+    if (!parts.length || parts.some((part) => part === "." || part === "..")) throw new Error("Invalid storage path");
+    return parts;
   }
 
-  async function walk(
-    projectId: string,
-    relativePath: string,
-    create: boolean,
-  ): Promise<{ dir: FileSystemDirectoryHandle; fileName: string }> {
-    const parts = relativePath.split("/").filter(Boolean);
-    const fileName = parts.pop();
-    if (!fileName || parts.some((part) => part === "." || part === "..")) throw new Error("Invalid storage path");
-    let dir = await projectDir(projectId, create);
-    for (const part of parts) {
-      dir = await dir.getDirectoryHandle(part, { create });
-    }
-    return { dir, fileName };
+  async function directory(parts: string[], create: boolean): Promise<FileSystemDirectoryHandle> {
+    let dir = await appDir();
+    for (const part of parts) dir = await dir.getDirectoryHandle(part, { create });
+    return dir;
   }
 
   return {
-    async listProjectIds() {
-      const projects = await rootDir();
-      const ids: string[] = [];
-      for await (const [name, handle] of projects.entries()) {
-        if (handle.kind === "directory" && isProjectId(name)) ids.push(name);
-      }
-      return ids;
-    },
-    async readBytes(projectId, relativePath) {
+    async readFile(path) {
+      const parts = splitPath(path);
+      const name = parts.pop()!;
       try {
-        const { dir, fileName } = await walk(projectId, relativePath, false);
-        const file = await (await dir.getFileHandle(fileName)).getFile();
-        return new Uint8Array(await file.arrayBuffer());
+        const dir = await directory(parts, false);
+        return await (await dir.getFileHandle(name)).getFile();
       } catch (error) {
         if (isNotFound(error)) return null;
         throw error;
       }
     },
-    async writeBytes(projectId, relativePath, bytes) {
-      const { dir, fileName } = await walk(projectId, relativePath, true);
-      const handle = await dir.getFileHandle(fileName, { create: true });
-      const writable = await handle.createWritable();
-      const chunk = new Uint8Array(bytes.byteLength);
-      chunk.set(bytes);
-      await writable.write(chunk);
-      await writable.close();
-    },
-    async listFiles(projectId, directory) {
+    async writeFile(path, data) {
+      const parts = splitPath(path);
+      const name = parts.pop()!;
+      const dir = await directory(parts, true);
+      const writable = await (await dir.getFileHandle(name, { create: true })).createWritable();
       try {
-        const dir = await (await projectDir(projectId, false)).getDirectoryHandle(directory);
-        const names: string[] = [];
-        for await (const [name, handle] of dir.entries()) {
-          if (handle.kind === "file") names.push(name);
-        }
-        return names;
+        await writable.write(data);
+        await writable.close();
+      } catch (error) {
+        await writable.abort().catch(() => {});
+        throw error;
+      }
+    },
+    async list(path) {
+      try {
+        const dir = await directory(splitPath(path), false);
+        const entries: StorageEntry[] = [];
+        for await (const [name, handle] of dir.entries()) entries.push({ name, kind: handle.kind });
+        return entries;
       } catch (error) {
         if (isNotFound(error)) return [];
         throw error;
       }
     },
-    async removeFile(projectId, relativePath) {
+    async remove(path) {
+      const parts = splitPath(path);
+      const name = parts.pop()!;
       try {
-        const { dir, fileName } = await walk(projectId, relativePath, false);
-        await dir.removeEntry(fileName);
-      } catch (error) {
-        if (!isNotFound(error)) throw error;
-      }
-    },
-    async removeProject(projectId) {
-      try {
-        const projects = await rootDir();
-        await projects.removeEntry(projectId, { recursive: true });
+        const dir = await directory(parts, false);
+        await dir.removeEntry(name, { recursive: true });
       } catch (error) {
         if (!isNotFound(error)) throw error;
       }

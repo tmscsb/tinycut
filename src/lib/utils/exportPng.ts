@@ -1,5 +1,6 @@
 import type { DocumentState, Page } from "../types/document.ts";
 import { renderDocumentSvg } from "./pageSvg.ts";
+import { assetDataUrl } from "./assets.ts";
 import { setPngDensity } from "./pngMetadata.ts";
 
 export const PNG_EXPORT_DPI = 300;
@@ -46,8 +47,16 @@ export async function exportDocumentAsRaster(
     throw new Error("The requested image is too large for a reliable browser export");
   }
   const { widthPx, heightPx } = dimensions;
+  const dataUrls = new Map<string, string>();
+  for (const item of state.items) {
+    if (item.type === "image" && !dataUrls.has(item.assetId)) dataUrls.set(item.assetId, await assetDataUrl(item.assetId));
+  }
   const svgBlob = new Blob(
-    [renderDocumentSvg(state, { width: `${widthPx}px`, height: `${heightPx}px` })],
+    [renderDocumentSvg(state, {
+      width: `${widthPx}px`,
+      height: `${heightPx}px`,
+      imageHref: (item) => dataUrls.get(item.assetId) ?? "",
+    })],
     { type: "image/svg+xml;charset=utf-8" },
   );
   const svgUrl = URL.createObjectURL(svgBlob);

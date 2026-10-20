@@ -143,3 +143,21 @@ export function resizeFrameFromScreenDelta(
     heightMm,
   };
 }
+
+export type SizeAxis = "width" | "height";
+
+/** Typed-in width or height; a locked aspect ratio carries the other side along. */
+export function sizeForDimension(
+  frame: Pick<ResizeFrame, "widthMm" | "heightMm"> & { lockedAspectRatio: boolean },
+  axis: SizeAxis,
+  valueMm: number,
+  minSizeMm: number,
+): { widthMm: number; heightMm: number } {
+  const aspect = frame.widthMm / frame.heightMm || 1;
+  if (axis === "width") {
+    const widthMm = Math.max(minSizeMm, frame.lockedAspectRatio ? minSizeMm * aspect : minSizeMm, valueMm);
+    return { widthMm, heightMm: frame.lockedAspectRatio ? Math.max(minSizeMm, widthMm / aspect) : frame.heightMm };
+  }
+  const heightMm = Math.max(minSizeMm, frame.lockedAspectRatio ? minSizeMm / aspect : minSizeMm, valueMm);
+  return { widthMm: frame.lockedAspectRatio ? Math.max(minSizeMm, heightMm * aspect) : frame.widthMm, heightMm };
+}

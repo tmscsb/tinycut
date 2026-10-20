@@ -5,6 +5,7 @@
   import ImageSettingsPanel from "./ImageSettingsPanel.svelte";
   import ShapeSettingsPanel from "./ShapeSettingsPanel.svelte";
   import TextSettingsPanel from "./TextSettingsPanel.svelte";
+  import SelectionSettingsPanel from "./SelectionSettingsPanel.svelte";
   import LayersPanel from "./LayersPanel.svelte";
   import { ui, closeMobilePanel } from "../stores/uiStore.svelte.ts";
   import { trapTabFocus } from "../utils/focus.ts";
@@ -46,9 +47,9 @@
       <button type="button" class="btn btn-sm btn-ghost btn-circle" aria-label="Close properties panel" bind:this={closeButton} onclick={closeMobilePanel}><Icon name="close" /></button>
     </div>
     {#if doc.selectedItemIds.length > 1}
-      <div class="alert alert-info py-2 px-3 mb-4 text-xs">Editing the primary item. Move, duplicate, and delete affect all selected items.</div>
-    {/if}
-    {#if selected}
+      <button class="btn btn-xs btn-ghost mb-3" onclick={() => selectItem(null)}><Icon name="file" size={14} />Page settings</button>
+      <SelectionSettingsPanel />
+    {:else if selected}
       <button class="btn btn-xs btn-ghost mb-3" onclick={() => selectItem(null)}><Icon name="file" size={14} />Page settings</button>
       {#if selected.type === "image"}
         <ImageSettingsPanel item={selected} />

@@ -13,7 +13,7 @@ const state = {
     id: "image-1",
     type: "image",
     name: "Sample",
-    src: "data:image/png;base64,AAAA",
+    assetId: "a".repeat(64),
     xMm: 10,
     yMm: 20,
     widthMm: 80,

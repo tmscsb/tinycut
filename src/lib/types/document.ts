@@ -18,7 +18,8 @@ export type ImageItem = {
   id: string;
   type: "image";
   name: string;
-  src: string;
+  /** SHA-256 of the image bytes; see utils/assets.ts. */
+  assetId: string;
   xMm: number;
   yMm: number;
   widthMm: number;

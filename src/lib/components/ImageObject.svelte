@@ -1,12 +1,13 @@
 <script lang="ts">
   import type { ImageItem } from "../types/document.ts";
-  import { doc, cropSession, resizeItem, beginUndo, endUndo } from "../stores/documentStore.svelte.ts";
+  import { doc, cropSession, resizeItem, beginUndo, endUndo, assetState } from "../stores/documentStore.svelte.ts";
   import { mmToPx, pxToMm } from "../utils/units.ts";
   import { MIN_SIZE_MM } from "../types/document.ts";
   import ResizeHandles from "./ResizeHandles.svelte";
   import RotationHandle from "./RotationHandle.svelte";
   import CropHandles from "./CropHandles.svelte";
   import { resizeFrameFromScreenDelta, type ResizeHandle } from "../utils/resizeGeometry.ts";
+  import { assetUrl } from "../utils/assets.ts";
 
   let { item, zIndex }: { item: ImageItem; zIndex: number } = $props();
 
@@ -14,6 +15,7 @@
   const primarySelected = $derived(doc.selectedItemId === item.id);
   const cropMode = $derived(doc.cropModeItemId === item.id);
 
+  const href = $derived(assetState.version >= 0 ? assetUrl(item.assetId) : "");
   const cropFracW = $derived(item.crop.right - item.crop.left);
   const cropFracH = $derived(item.crop.bottom - item.crop.top);
   const hasCrop = $derived(item.crop.left !== 0 || item.crop.top !== 0 || item.crop.right !== 1 || item.crop.bottom !== 1);
@@ -102,13 +104,17 @@
       preserveAspectRatio="none"
     >
       <image
-        href={item.src}
+        href={href}
         x="0"
         y="0"
         width={item.naturalWidthPx}
         height={item.naturalHeightPx}
       />
     </svg>
+
+    {#if !href}
+      <div class="absolute inset-0 flex items-center justify-center bg-base-200 text-base-content/60 text-xs text-center p-1 pointer-events-none" data-missing-image>Image missing</div>
+    {/if}
 
     {#if borderPx > 0}
       <div

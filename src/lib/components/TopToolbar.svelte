@@ -6,12 +6,14 @@
     addShape,
     addText,
     saveProject,
+    saveStatus,
     persistState,
     requestOpenProjects,
+    duplicateLayout,
     setProjectName,
     setZoom,
     setUnit,
-    exportJson,
+    exportBackup,
     requestImportJson,
     undo,
     redo,
@@ -20,6 +22,7 @@
     setPageTemplate,
   } from "../stores/documentStore.svelte.ts";
   import { ZOOM_LEVELS, PAGE_TEMPLATES } from "../types/document.ts";
+  import { assetUrl } from "../utils/assets.ts";
   import { exportDocumentAsRaster, getPngExportDimensions, type RasterExportFormat } from "../utils/exportPng.ts";
   import {
     ui,
@@ -106,12 +109,33 @@
     }
   }
 
-  function handleExportJson() {
+  async function handleExportBackup() {
     closeMenus();
-    const json = exportJson();
-    downloadBlob(new Blob([json], { type: "application/json" }), projectFileName(doc.name));
-    showNotice("Project JSON exported", "success");
+    try {
+      const json = await exportBackup();
+      downloadBlob(new Blob([json], { type: "application/json" }), projectFileName(doc.name));
+      showNotice("Backup downloaded", "success");
+    } catch {
+      showNotice("The backup could not be created", "error");
+    }
   }
+
+  const status = $derived(saveStatus());
+  const savedAtLabel = $derived(persistState.lastSavedAt
+    ? new Date(persistState.lastSavedAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
+    : "");
+  const statusText = $derived({
+    new: "Not saved yet",
+    saving: "Saving…",
+    saved: "Saved",
+    failed: "Not saved",
+  }[status]);
+  const statusTitle = $derived({
+    new: "Layouts save automatically in this browser once you add something. Click to see your saved layouts.",
+    saving: "Saving to this browser…",
+    saved: `Saved automatically in this browser at ${savedAtLabel}. Click to see your saved layouts.`,
+    failed: "Saving to this browser failed. Click to try again, or download a backup from the Project menu.",
+  }[status]);
 
   async function handlePrint() {
     closeMenus();
@@ -120,7 +144,7 @@
     await document.fonts.ready;
     const images = doc.items.filter((item) => item.type === "image");
     try {
-      await Promise.all(images.map((item) => { const image = new Image(); image.src = item.src; return image.decode(); }));
+      await Promise.all(images.map((item) => { const image = new Image(); image.src = assetUrl(item.assetId); return image.decode(); }));
       window.print();
     } catch {
       showNotice("An image could not be loaded. Check your images before printing.", "error");
@@ -161,18 +185,25 @@
     </h1>
     <div class="toolbar-spacer"></div>
     <input class="input input-sm project-name" bind:value={doc.name} maxlength="80" autocomplete="off" aria-label="Layout name" title="Layout name" onchange={(e) => setProjectName(e.currentTarget.value)} onblur={(e) => setProjectName(e.currentTarget.value)} />
-    <span class="save-status" aria-live="polite">{doc.dirty ? "Unsaved changes" : persistState.lastSavedAt ? "Saved in this browser" : "Not saved yet"}</span>
-    <button class="btn btn-sm btn-ghost toolbar-save" onclick={() => void saveProject()} disabled={persistState.saving} aria-label="Save in this browser" title={`Save in this browser (${modKey}+S)`}><Icon name="save" /><span class="desktop-label">{persistState.saving ? "Saving…" : "Save"}</span></button>
+    <button
+      class="btn btn-sm btn-ghost save-status"
+      data-save-status={status}
+      aria-live="polite"
+      title={statusTitle}
+      onclick={() => { if (status === "failed") void saveProject(); else requestOpenProjects(); }}
+    ><Icon name="save" size={16} /><span>{statusText}</span>{#if status === "failed"}<span class="underline">Retry</span>{/if}</button>
     <details class="dropdown dropdown-end" bind:this={projectMenu} ontoggle={() => { if (projectMenu?.open && exportMenu) exportMenu.open = false; }}>
       <summary class="btn btn-sm btn-ghost" aria-label="Project menu"><Icon name="folder" /><span>Project</span><Icon name="chevron" size={14} /></summary>
       <ul class="dropdown-content menu bg-base-100 rounded-box w-64 p-2 shadow-xl border border-base-300">
-        <li><button onclick={() => { closeMenus(); requestNewDocument("a4-portrait"); }}><Icon name="file" />New document</button></li>
-        <li><button onclick={() => { closeMenus(); void saveProject(); }} disabled={persistState.saving}><Icon name="save" />Save in this browser</button></li>
-        <li><button onclick={() => { closeMenus(); requestOpenProjects(); }}><Icon name="folder" />Open…</button></li>
-        <li><button onclick={handleExportJson}>Download project JSON</button></li>
-        <li><button onclick={() => { closeMenus(); importInput?.click(); }}>Open project JSON</button></li>
+        <li class="menu-title">In this browser</li>
+        <li><button onclick={() => { closeMenus(); requestNewDocument("a4-portrait"); }}><Icon name="file" />New layout</button></li>
+        <li><button onclick={() => { closeMenus(); requestOpenProjects(); }}><Icon name="folder" />Your layouts…<kbd class="kbd kbd-xs ml-auto">{modKey} + O</kbd></button></li>
+        <li><button onclick={() => { closeMenus(); void duplicateLayout(); }} disabled={persistState.saving}><Icon name="copy" />Make a copy</button></li>
+        <li class="menu-title">Backup file</li>
+        <li><button onclick={() => void handleExportBackup()}><Icon name="download" />Download backup</button></li>
+        <li><button onclick={() => { closeMenus(); importInput?.click(); }}><Icon name="folder" />Import backup…</button></li>
         <li class="small-phone-help"><button onclick={() => { closeMenus(); showShortcuts(); }}><Icon name="help" />Keyboard shortcuts</button></li>
-        <li class="menu-note">Save keeps this layout in this browser, on this device. A new tab starts empty. Download a JSON file to copy the layout elsewhere.</li>
+        <li class="menu-note">Layouts save automatically in this browser on this device, images included. Clearing this site's data deletes them. A backup is one .json file with the images inside, for another browser or computer.</li>
       </ul>
     </details>
     <details class="dropdown dropdown-end" bind:this={exportMenu} ontoggle={() => { if (exportMenu?.open && projectMenu) projectMenu.open = false; }}>

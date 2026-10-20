@@ -101,6 +101,39 @@ export function screenDeltaToLocalCropPercent(
   };
 }
 
+/**
+ * Where a pointer is inside a possibly rotated item, as fractions of its unrotated
+ * width and height. `bounds` is the item's on-screen box; rotation keeps its centre.
+ */
+export function screenPointToLocalFraction(
+  clientX: number,
+  clientY: number,
+  bounds: { left: number; top: number; width: number; height: number },
+  rotationDeg: number,
+  widthPx: number,
+  heightPx: number,
+): { x: number; y: number } {
+  const { dxPercent, dyPercent } = screenDeltaToLocalCropPercent(
+    clientX - (bounds.left + bounds.width / 2),
+    clientY - (bounds.top + bounds.height / 2),
+    rotationDeg,
+    widthPx,
+    heightPx,
+  );
+  return { x: 0.5 + dxPercent, y: 0.5 + dyPercent };
+}
+
+/** The rectangle spanned by two dragged corners, kept inside the image. */
+export function regionFromPoints(a: { x: number; y: number }, b: { x: number; y: number }): ImageCrop {
+  const clamp = (value: number) => Math.max(0, Math.min(1, value));
+  return {
+    left: clamp(Math.min(a.x, b.x)),
+    top: clamp(Math.min(a.y, b.y)),
+    right: clamp(Math.max(a.x, b.x)),
+    bottom: clamp(Math.max(a.y, b.y)),
+  };
+}
+
 /** Print frame for a region of the currently visible image, without mutating the source. */
 export function cutRegionFromImage(
   item: ImageItem,

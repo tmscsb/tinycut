@@ -2,6 +2,7 @@
   import {
     doc,
     selectItem,
+    setSelection,
     moveItemsByDelta,
     addImage,
     beginUndo,
@@ -44,6 +45,10 @@
   });
   let expandingCanvas = false;
   let panStart = $state({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
+
+  /** Rubber-band selection, in workspace content coordinates so scrolling does not move its start. */
+  let marquee = $state<{ startX: number; startY: number; x: number; y: number; active: boolean; base: string[] } | null>(null);
+  const MARQUEE_THRESHOLD_PX = 4;
 
   let isFileDragOver = $state(false);
   let handledFitRequest = $state(0);
@@ -181,7 +186,44 @@
     } else {
       dragItemId = null;
       if (!e.shiftKey) selectItem(null);
+      // Touch drags on empty space keep scrolling the workspace.
+      if (e.pointerType !== "touch" && workspaceEl) {
+        const point = contentPoint(e);
+        marquee = { startX: point.x, startY: point.y, ...point, active: false, base: e.shiftKey ? [...doc.selectedItemIds] : [] };
+        workspaceEl.setPointerCapture(e.pointerId);
+      }
     }
+  }
+
+  function contentPoint(e: PointerEvent): { x: number; y: number } {
+    const bounds = workspaceEl!.getBoundingClientRect();
+    return { x: e.clientX - bounds.left + workspaceEl!.scrollLeft, y: e.clientY - bounds.top + workspaceEl!.scrollTop };
+  }
+
+  const marqueeRect = $derived(marquee && {
+    left: Math.min(marquee.startX, marquee.x),
+    top: Math.min(marquee.startY, marquee.y),
+    width: Math.abs(marquee.x - marquee.startX),
+    height: Math.abs(marquee.y - marquee.startY),
+  });
+
+  function updateMarquee(e: PointerEvent) {
+    if (!marquee || !workspaceEl) return;
+    Object.assign(marquee, contentPoint(e));
+    if (!marquee.active && Math.hypot(marquee.x - marquee.startX, marquee.y - marquee.startY) < MARQUEE_THRESHOLD_PX) return;
+    marquee.active = true;
+    const bounds = workspaceEl.getBoundingClientRect();
+    const left = Math.min(marquee.startX, marquee.x) - workspaceEl.scrollLeft + bounds.left;
+    const top = Math.min(marquee.startY, marquee.y) - workspaceEl.scrollTop + bounds.top;
+    const right = left + Math.abs(marquee.x - marquee.startX);
+    const bottom = top + Math.abs(marquee.y - marquee.startY);
+    const hits = Array.from(workspaceEl.querySelectorAll<HTMLElement>("[data-document-item]"))
+      .filter((element) => {
+        const box = element.getBoundingClientRect();
+        return box.right >= left && box.left <= right && box.bottom >= top && box.top <= bottom;
+      })
+      .map((element) => element.dataset.imageItem ?? "");
+    setSelection([...marquee.base, ...hits.filter((id) => !marquee!.base.includes(id))]);
   }
 
   function handlePointerMove(e: PointerEvent) {
@@ -194,6 +236,11 @@
           workspaceEl.scrollTop = panStart.scrollTop - (e.clientY - panStart.y);
         }
       }
+      return;
+    }
+
+    if (marquee) {
+      updateMarquee(e);
       return;
     }
 
@@ -238,6 +285,7 @@
       panning = false;
     }
     dragging = false;
+    marquee = null;
     if (autoScrollFrame) cancelAnimationFrame(autoScrollFrame);
     autoScrollFrame = 0;
     dragItemId = null;
@@ -358,6 +406,8 @@
 
 <svelte:window onpointerup={handlePointerUp} onpointercancel={handlePointerUp} onkeydown={handleKeyDown} onkeyup={handleKeyUp} onblur={() => { spaceHeld = false; panning = false; }} />
 
+<!-- Keyboard users must be able to focus the scrollable workspace to scroll it. -->
+<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
   class="workspace-bg flex-1 overflow-auto relative {cursorClass}"
   class:panning={panning}
@@ -365,6 +415,7 @@
   bind:this={workspaceEl}
   role="application"
   aria-label="Workspace"
+  tabindex="0"
   onpointerdown={handlePointerDown}
   onpointermove={handlePointerMove}
   onwheel={handleWheel}
@@ -379,6 +430,14 @@
   <div class="workspace-stage min-h-full flex items-start justify-center" bind:this={stageEl} style="padding: {paddingCss(canvasPad)}">
     <PageCanvas />
   </div>
+
+  {#if marqueeRect && marquee?.active}
+    <div
+      class="no-print absolute z-40 pointer-events-none border border-primary bg-primary/10 rounded-sm"
+      data-marquee
+      style="left: {marqueeRect.left}px; top: {marqueeRect.top}px; width: {marqueeRect.width}px; height: {marqueeRect.height}px;"
+    ></div>
+  {/if}
 
   {#if isFileDragOver}
     <div class="absolute inset-0 bg-primary/10 border-4 border-dashed border-primary pointer-events-none z-50 flex items-center justify-center">
