@@ -29,3 +29,6 @@ pnpm-debug.log*
 .vscode/
 *.swp
 .DS_Store
+
+# Codebase knowledge graph (generated locally)
+.codebase-memory/
